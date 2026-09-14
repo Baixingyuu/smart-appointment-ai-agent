@@ -2,8 +2,8 @@
 
 以「评测驱动」的客服工单系统。技术栈 Go，重心在**可复现的评测**而非模型本身。
 
-当前处于**一期 · 迭代 4**：技能标签与确定性派单、工单全链路、RAG 真置信判定、
-模型侧工具与治理层、以及**四轴评测框架**（指派 / 检索 / 轨迹 / 成本延迟）。
+**一期已完成**：技能标签与确定性派单、工单全链路、RAG 真置信判定、
+模型侧工具与治理层、四轴评测框架、会话与消息模型、HTTP 接口层。
 
 真正的多步 agent loop、查询改写、微调、用户行为分析按计划留待二期、三期。
 
@@ -62,13 +62,51 @@
 ```bash
 make doctor             # 环境自检
 make check              # fmt + vet + 测试 + 数据校验
+make demo               # 跑一遍完整工单链路，观察派单与状态流转
 make eval               # 指派评测（基础集 + 对抗集）
 make eval-trajectory    # 轨迹评测（工具选择/顺序/轮次/越界/成本/延迟）
-make demo               # 跑一遍完整工单链路，观察派单与状态流转
+
+# 启动 HTTP 服务
+make serve-offline      # 离线脚本模型，无需任何密钥
+make serve              # 真实模型：LLM_API_KEY=sk-xxx make serve
 
 # 验证评测本身是否具备区分力：注入缺陷后指标必须下降
 make eval-trajectory ARGS="-sabotage=always_write"
 ```
+
+## HTTP 接口
+
+```
+GET  /api/health                              健康检查（含当前模型模式）
+POST /api/conversations                       创建会话
+GET  /api/conversations                       会话列表
+GET  /api/conversations/{id}                  会话详情（含全部消息）
+POST /api/conversations/{id}/messages         发送消息（幂等）
+POST /api/conversations/{id}/close            结束会话
+GET  /api/tickets            GET /api/tickets/{id}     工单列表与详情
+GET  /api/skills             GET /api/employees        技能树与处理人（含实时负载）
+```
+
+```bash
+# 一次完整交互
+CONV=$(curl -s -X POST localhost:8080/api/conversations \
+  -H 'Content-Type: application/json' -d '{"title":"接口问题"}' | jq -r .id)
+
+curl -s -X POST localhost:8080/api/conversations/$CONV/messages \
+  -H 'Content-Type: application/json' \
+  -d '{"content":"接口返回 401 怎么办","requestId":"req-1"}'
+
+# 用同一 requestId 重试 → 返回 {"duplicate":true}，不会重复落消息或重复建单
+```
+
+**幂等设计**：`requestId` 是幂等键。客户端未提供时服务端按「会话 + 内容」派生，
+至少能拦住「同一句话被重复提交」这种最常见的重复。响应里用 `duplicate` 标记
+而非报错，便于调用方区分「重复」与「真失败」。
+
+**会话关闭后**发消息返回 `409`（状态冲突，客户端可纠正），而不是 `500`。
+
+**错误格式统一为 JSON**：标准库对未匹配路径/方法会写纯文本，服务对其做了改写，
+避免客户端按统一格式解析时失败。
 
 需要 Go 1.24+（`brew install go`）与 python3（仅用于评测集校验）。
 
@@ -201,13 +239,15 @@ make verify-data
 ## 代码结构
 
 ```
-cmd/agentdesk/          评测 CLI（demo / eval-assign）
+cmd/agentdesk/          CLI（serve / demo / eval-assign / eval-trajectory）
 internal/domain/        领域模型、技能集合、工单状态机、确认中断、确认解析
 internal/assign/        确定性派单器（纯函数，无 I/O）
 internal/rag/           检索 + 证据充分性判定 + 失败归因；两种向量化实现
 internal/llm/           模型客户端（官方 OpenAI SDK）+ 可注入接口
 internal/tooling/       工具注册与治理（分级 / 白名单 / 预算 / 结构化归因）
 internal/agent/         回合编排：工具调度、确认中断与恢复、token 累加
+internal/conversation/  会话编排：幂等落库、AI 回合、回复写入
+internal/api/           HTTP 接口（标准库 ServeMux，无 Web 框架）
 internal/store/         持久化抽象 + 内存实现
 internal/ticket/        工单业务编排（建单/派单/接单/升级/完成）
 internal/seed/          技能树与处理人种子数据

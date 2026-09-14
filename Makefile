@@ -12,6 +12,8 @@ help:
 	@echo "agentdesk —— 一期命令"
 	@echo ""
 	@echo "  make test        运行全部单元测试"
+	@echo "  make serve       启动 HTTP 服务（需 LLM_API_KEY）"
+	@echo "  make serve-offline  启动 HTTP 服务（离线脚本模型，无需密钥）"
 	@echo "  make eval        运行指派评测（基础集 + 对抗集）"
 	@echo "  make eval-trajectory 运行轨迹评测（可传 ARGS=\"-sabotage=...\"）"
 	@echo "  make eval-report 运行评测并写出 JSON 报告"
@@ -32,6 +34,18 @@ vet:
 .PHONY: test
 test:
 	$(GO) test ./...
+
+# 启动 HTTP 服务。默认需提供模型密钥，例如：
+#   LLM_API_KEY=sk-xxx make serve
+# 仅验证链路时用离线脚本模型：
+#   make serve-offline
+.PHONY: serve
+serve:
+	$(GO) run ./cmd/agentdesk serve $(ARGS)
+
+.PHONY: serve-offline
+serve-offline:
+	$(GO) run ./cmd/agentdesk serve -offline $(ARGS)
 
 .PHONY: eval
 eval:

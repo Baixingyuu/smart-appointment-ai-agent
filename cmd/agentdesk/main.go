@@ -33,6 +33,11 @@ func main() {
 			fmt.Fprintf(os.Stderr, "错误: %v\n", err)
 			os.Exit(1)
 		}
+	case "serve":
+		if err := runServe(os.Args[2:]); err != nil {
+			fmt.Fprintf(os.Stderr, "错误: %v\n", err)
+			os.Exit(1)
+		}
 	case "demo":
 		if err := runDemo(); err != nil {
 			fmt.Fprintf(os.Stderr, "错误: %v\n", err)
@@ -51,6 +56,7 @@ func usage() {
 	fmt.Fprint(os.Stderr, `agentdesk —— 一期命令
 
 用法:
+  agentdesk serve [选项]         启动 HTTP 服务
   agentdesk demo                 跑一遍完整工单链路（建单/派单/去重/升级/完成）
   agentdesk eval-assign [选项]   运行指派评测
   agentdesk eval-trajectory [选项]  运行轨迹评测（工具选择/轮次/成本/延迟）
@@ -60,6 +66,14 @@ eval-trajectory 选项:
   -json string      把机读报告写入该路径
   -sabotage string  人为注入缺陷以验证评测区分力:
                     skip_rag | always_write | extra_rounds | unknown_tool
+
+serve 选项:
+  -addr string        监听地址（默认 :8080）
+  -offline            使用离线脚本模型（无需 API Key，仅验证链路）
+  -base-url string    模型服务地址（或用 LLM_BASE_URL）
+  -api-key string     模型 API Key（或用 LLM_API_KEY）
+  -model string       模型名称（或用 LLM_MODEL，默认 gpt-4o-mini）
+  -embed-base-url / -embed-api-key / -embed-model   向量模型（可选）
 
 eval-assign 选项:
   -dataset string   评测集路径，可重复指定（默认同时运行基础集与对抗集）

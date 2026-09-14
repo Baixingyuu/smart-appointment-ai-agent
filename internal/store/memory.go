@@ -49,6 +49,18 @@ type Store interface {
 	AppendProgress(p domain.TicketProgress) error
 	ProgressByTicket(ticketID int64) []domain.TicketProgress
 
+	// 会话与消息
+	SaveConversation(c domain.Conversation) (int64, error)
+	GetConversation(id int64) (domain.Conversation, error)
+	ListConversations() []domain.Conversation
+	// AppendMessage 追加消息，并回填 ID 与创建时间。
+	//
+	// 接收指针而非值：按值接收时存储层填的 ID/时间不会传回调用方，
+	// 表现为「刚写入的消息时间戳为零值」（实测踩过）。
+	// RequestID 重复时返回 ErrDuplicateRequest，使重试不产生两条消息。
+	AppendMessage(m *domain.Message) error
+	MessagesByConversation(conversationID int64) []domain.Message
+
 	// 确认中断
 	SaveInterrupt(i domain.Interrupt) (int64, error)
 	GetInterrupt(id int64) (domain.Interrupt, error)
@@ -76,6 +88,13 @@ type Memory struct {
 	interrupts      map[int64]domain.Interrupt
 	nextInterruptID int64
 
+	conversations      map[int64]domain.Conversation
+	nextConversationID int64
+	messages           []domain.Message
+	nextMessageID      int64
+	// requestIDs 记录已处理的请求幂等键，用于丢弃重复投递。
+	requestIDs map[string]struct{}
+
 	// now 允许测试注入固定时钟，使时间相关断言可复现。
 	now func() time.Time
 }
@@ -83,11 +102,13 @@ type Memory struct {
 // NewMemory 构造空的内存存储。
 func NewMemory() *Memory {
 	return &Memory{
-		employees:  make(map[int64]domain.Employee),
-		skills:     make(map[int64]domain.Skill),
-		tickets:    make(map[int64]domain.Ticket),
-		interrupts: make(map[int64]domain.Interrupt),
-		now:        time.Now,
+		employees:     make(map[int64]domain.Employee),
+		skills:        make(map[int64]domain.Skill),
+		tickets:       make(map[int64]domain.Ticket),
+		interrupts:    make(map[int64]domain.Interrupt),
+		conversations: make(map[int64]domain.Conversation),
+		requestIDs:    make(map[string]struct{}),
+		now:           time.Now,
 	}
 }
 
@@ -339,4 +360,99 @@ func (m *Memory) FindPendingInterrupt(conversationID int64) (domain.Interrupt, b
 		}
 	}
 	return found, ok
+}
+
+// ---- 会话与消息 ----
+
+// SaveConversation 保存会话。ID 为 0 时自动分配。
+func (m *Memory) SaveConversation(c domain.Conversation) (int64, error) {
+	if err := c.Validate(); err != nil {
+		return 0, err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	now := m.now()
+	if c.ID <= 0 {
+		m.nextConversationID++
+		c.ID = m.nextConversationID
+		c.CreatedAt = now
+	} else if existing, ok := m.conversations[c.ID]; ok {
+		// 保留原始创建时间，只推进更新时间。
+		c.CreatedAt = existing.CreatedAt
+	} else if c.CreatedAt.IsZero() {
+		c.CreatedAt = now
+	}
+	c.UpdatedAt = now
+	if c.ID > m.nextConversationID {
+		m.nextConversationID = c.ID
+	}
+	m.conversations[c.ID] = c
+	return c.ID, nil
+}
+
+func (m *Memory) GetConversation(id int64) (domain.Conversation, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	c, ok := m.conversations[id]
+	if !ok {
+		return domain.Conversation{}, ErrNotFound
+	}
+	return c, nil
+}
+
+func (m *Memory) ListConversations() []domain.Conversation {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	ret := make([]domain.Conversation, 0, len(m.conversations))
+	for _, c := range m.conversations {
+		ret = append(ret, c)
+	}
+	sort.Slice(ret, func(i, j int) bool { return ret[i].ID < ret[j].ID })
+	return ret
+}
+
+// AppendMessage 追加一条消息。
+//
+// 幂等：RequestID 非空且已出现过时直接返回 ErrDuplicateRequest。
+// 这是防止重复建单的第一道闸——Webhook 重投与客户端重试都会触发重复请求。
+func (m *Memory) AppendMessage(msg *domain.Message) error {
+	if msg == nil {
+		return errors.New("消息不能为空")
+	}
+	if err := msg.Validate(); err != nil {
+		return err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if msg.RequestID != "" {
+		if _, exists := m.requestIDs[msg.RequestID]; exists {
+			return domain.ErrDuplicateRequest
+		}
+		m.requestIDs[msg.RequestID] = struct{}{}
+	}
+
+	m.nextMessageID++
+	msg.ID = m.nextMessageID
+	if msg.CreatedAt.IsZero() {
+		msg.CreatedAt = m.now()
+	}
+	m.messages = append(m.messages, *msg)
+	return nil
+}
+
+func (m *Memory) MessagesByConversation(conversationID int64) []domain.Message {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	var ret []domain.Message
+	for _, msg := range m.messages {
+		if msg.ConversationID == conversationID {
+			ret = append(ret, msg)
+		}
+	}
+	// 消息按 ID 升序：ID 单调递增，等价于按时间排序，
+	// 但不依赖时间戳（注入时钟下多个消息可能共享同一时刻）。
+	sort.Slice(ret, func(i, j int) bool { return ret[i].ID < ret[j].ID })
+	return ret
 }
