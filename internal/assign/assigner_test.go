@@ -2,6 +2,7 @@ package assign
 
 import (
 	"math"
+	"strings"
 	"testing"
 
 	"github.com/mac/agentdesk/internal/domain"
@@ -210,6 +211,64 @@ func TestScoreArithmeticAndWeights(t *testing.T) {
 	if !approx(got.Total, wantTotal) {
 		t.Errorf("总分：期望 %.6f，实际 %.6f", wantTotal, got.Total)
 	}
+}
+
+func TestReasonAttributionMatchesActualDecidingFactor(t *testing.T) {
+	// 理由是给人看的，必须与实际决胜因素一致。
+	// 教训：早期用浮点直接比较分项，1/3 之类权重在二进制下无法精确表示，
+	// 导致「技能实际相同」被写成「技能更优」，理由失真。
+	// 本用例断言三种决胜因素各自被正确归因。
+	t.Run("技能决胜", func(t *testing.T) {
+		emps := []domain.Employee{
+			employee(1, 1, 4, 0.5, 1, 2), // Jaccard 2/2 = 1.0
+			employee(2, 1, 4, 0.5, 1, 3), // Jaccard 1/3
+		}
+		log := New(DefaultWeights()).Assign(ticket(120, 1, 2), emps)
+		if !strings.Contains(log.Reason, "技能匹配优于") {
+			t.Fatalf("应由技能决胜，理由未正确归因：%s", log.Reason)
+		}
+	})
+
+	t.Run("负载决胜", func(t *testing.T) {
+		// 技能集合完全相同，负载不同 → 理由必须说明技能相当、因负载胜出。
+		emps := []domain.Employee{
+			employee(1, 3, 4, 0.5, 1, 2),
+			employee(2, 0, 4, 0.5, 1, 2),
+		}
+		log := New(DefaultWeights()).Assign(ticket(121, 1, 2), emps)
+		if !strings.Contains(log.Reason, "因负载更低胜出") {
+			t.Fatalf("应由负载决胜，理由未正确归因：%s", log.Reason)
+		}
+		if strings.Contains(log.Reason, "技能匹配优于") {
+			t.Fatalf("技能相同时不应声称技能更优：%s", log.Reason)
+		}
+	})
+
+	t.Run("响应决胜", func(t *testing.T) {
+		// 技能与负载都相同，只有响应不同。
+		emps := []domain.Employee{
+			employee(1, 1, 4, 0.2, 1, 2),
+			employee(2, 1, 4, 0.9, 1, 2),
+		}
+		log := New(DefaultWeights()).Assign(ticket(122, 1, 2), emps)
+		if !strings.Contains(log.Reason, "最近响应更优") {
+			t.Fatalf("应由响应决胜，理由未正确归因：%s", log.Reason)
+		}
+	})
+
+	t.Run("全平局按ID收敛", func(t *testing.T) {
+		emps := []domain.Employee{
+			employee(1, 1, 4, 0.5, 1, 2),
+			employee(2, 1, 4, 0.5, 1, 2),
+		}
+		log := New(DefaultWeights()).Assign(ticket(123, 1, 2), emps)
+		if log.AssigneeID != 1 {
+			t.Fatalf("全平局应收敛到最小 ID，实际 %d", log.AssigneeID)
+		}
+		if !strings.Contains(log.Reason, "按员工 ID 升序收敛") {
+			t.Fatalf("全平局理由未说明收敛规则：%s", log.Reason)
+		}
+	})
 }
 
 func TestDefaultWeightsFavorSkillOverLoad(t *testing.T) {

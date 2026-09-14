@@ -28,6 +28,11 @@ func main() {
 			fmt.Fprintf(os.Stderr, "错误: %v\n", err)
 			os.Exit(1)
 		}
+	case "demo":
+		if err := runDemo(); err != nil {
+			fmt.Fprintf(os.Stderr, "错误: %v\n", err)
+			os.Exit(1)
+		}
 	case "help", "-h", "--help":
 		usage()
 	default:
@@ -41,12 +46,13 @@ func usage() {
 	fmt.Fprint(os.Stderr, `agentdesk —— 一期命令
 
 用法:
+  agentdesk demo                 跑一遍完整工单链路（建单/派单/去重/升级/完成）
   agentdesk eval-assign [选项]   运行指派评测
 
-选项:
-  -dataset string   评测集路径（默认 eval/datasets/assignment.json）
-  -json string      同时把机读报告写入该路径
-  -quiet            只输出汇总，不输出未通过样本明细
+eval-assign 选项:
+  -dataset string   评测集路径，可重复指定（默认同时运行基础集与对抗集）
+  -json string      把机读报告写入该路径
+  -quiet            只输出汇总
 `)
 }
 

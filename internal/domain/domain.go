@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 )
 
 // Priority 工单优先级。
@@ -177,6 +178,22 @@ const (
 
 var AllTicketStatuses = []TicketStatus{TicketStatusPending, TicketStatusInProgress, TicketStatusDone}
 
+// TicketInput 建单输入。
+//
+// 定义在 domain 而非业务服务包，使 seed 等工具包无需反向依赖业务层，
+// 保持依赖方向单向（domain ← 其余所有包）。
+type TicketInput struct {
+	Title          string
+	Description    string
+	Category       Category
+	Priority       Priority
+	RequiredSkill  SkillSet
+	ConversationID int64
+	SourceChannel  string
+	// MissingInfo 由调用方（对话流程）判定后传入，服务不再自行猜测。
+	MissingInfo []string
+}
+
 // Ticket 工单。
 //
 // 与参考实现的差异：新增 CategoryID 与 Priority。
@@ -192,6 +209,19 @@ type Ticket struct {
 	RequiredSkill SkillSet // 由 Category + 标签推导出的技能需求向量
 	AssigneeID    int64    // 0 表示未指派
 	SourceChannel string
+
+	// ConversationID 关联的来源会话，0 表示非会话来源（人工建单）。
+	ConversationID int64
+
+	// MissingInfo 记录建单时缺失的关键信息字段名。
+	//
+	// 信息不全不阻塞建单：真实场景中用户常无法一次说清，卡住不建单会让问题丢失。
+	// 缺什么显式记录，供处理人补充。
+	MissingInfo []string
+
+	// DedupedFrom 命中重复时的原工单 ID，0 表示非重复。
+	// 去重命中走「追加进展」而非新建，避免同一问题产生多张工单。
+	DedupedFrom int64
 }
 
 // Validate 校验工单数据。
@@ -226,12 +256,18 @@ const (
 // 必须落库：它是「可解释」（业务方可复核理由）与「可评测」
 // （指派准确率需要金标对比）的共同前提。
 type AssignmentLog struct {
+	// ID 与 CreatedAt 由存储层在落库时填充，派单器本身不感知它们，
+	// 以保持 Assign 是纯函数。
+	ID         int64
 	TicketID   int64
 	AssigneeID int64
 	Outcome    AssignmentOutcome
 	Reason     string
 	Score      float64
+	// Candidates 保存本次全部候选人的评分明细（含被过滤者）。
+	// 不保存明细就只能给出总分，无法复核「是不是因为负载而非技能胜出」。
 	Candidates []CandidateScore
+	CreatedAt  time.Time
 }
 
 // CandidateScore 记录单个候选人的评分明细。

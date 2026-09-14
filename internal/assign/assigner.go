@@ -248,17 +248,33 @@ func explainWinner(ticket domain.Ticket, winner domain.CandidateScore, scored []
 		return b.String()
 	}
 	// 说明胜出原因，便于业务方复核是否存在「因负载而非技能胜出」的情况。
+	//
+	// 分项比较必须容忍浮点误差：1/3 这类权重在二进制下无法精确表示，
+	// 直接比较会让「技能实际相同」被误报为「技能更优」，理由因此失真。
 	switch {
-	case winner.SkillScore > runnerUp.SkillScore:
+	case !nearlyEqual(winner.SkillScore, runnerUp.SkillScore):
 		fmt.Fprintf(&b, "；技能匹配优于 %s（%.2f vs %.2f）", runnerUp.Name, winner.SkillScore, runnerUp.SkillScore)
-	case winner.LoadScore > runnerUp.LoadScore:
+	case !nearlyEqual(winner.LoadScore, runnerUp.LoadScore):
 		fmt.Fprintf(&b, "；技能相当（%.2f），因负载更低胜出 %s（%.2f vs %.2f）",
 			winner.SkillScore, runnerUp.Name, winner.LoadScore, runnerUp.LoadScore)
-	default:
-		fmt.Fprintf(&b, "；因最近响应更优胜出 %s（%.2f vs %.2f）",
+	case !nearlyEqual(winner.RecencyScore, runnerUp.RecencyScore):
+		fmt.Fprintf(&b, "；技能与负载相当，因最近响应更优胜出 %s（%.2f vs %.2f）",
 			runnerUp.Name, winner.RecencyScore, runnerUp.RecencyScore)
+	default:
+		fmt.Fprintf(&b, "；技能、负载与响应均相当，按员工 ID 升序收敛于 %d（对比 %s id=%d）",
+			winner.EmployeeID, runnerUp.Name, runnerUp.EmployeeID)
 	}
 	return b.String()
+}
+
+// nearlyEqual 判断两个分数是否可视为相同，容忍浮点累加误差。
+func nearlyEqual(a, b float64) bool {
+	const epsilon = 1e-9
+	diff := a - b
+	if diff < 0 {
+		diff = -diff
+	}
+	return diff < epsilon
 }
 
 // runnerUpOf 返回除 winner 外总分最高的候选人。

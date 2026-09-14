@@ -1,13 +1,10 @@
 SHELL := /bin/bash
 
-# 本项目使用的 Go 工具链安装在仓库同级目录，不污染系统路径。
-# 若本机已有 go 且版本 ≥1.24，可覆盖 GO 变量使用系统版本。
-GO ?= $(shell command -v go 2>/dev/null || echo $(CURDIR)/../go/bin/go)
-GOPATH ?= $(CURDIR)/../gopath
-GOCACHE ?= $(GOPATH)/build-cache
-export GOPATH
-export GOCACHE
+# 依赖全局 Go 工具链（brew install go）。
+# 若本机 Go 在其他位置，用 make GO=/path/to/go 覆盖。
+GO ?= go
 
+# 评测报告输出目录
 REPORT_DIR := eval/reports
 
 .PHONY: help
@@ -57,10 +54,8 @@ check: fmt vet test verify-data
 
 .PHONY: doctor
 doctor:
-	@echo "GO        $(GO)"
-	@$(GO) version || echo "  ✗ 未找到 Go 工具链"
-	@echo "GOPATH    $(GOPATH)"
-	@echo "GOCACHE   $(GOCACHE)"
+	@echo "go        $$($(GO) version 2>/dev/null || echo '✗ 未安装，请执行 brew install go')"
+	@echo "GOROOT    $$($(GO) env GOROOT 2>/dev/null)"
 	@echo "python3   $$(python3 --version 2>&1 || echo '未安装')"
 	@echo "数据集:"
 	@ls -1 eval/datasets/*.json 2>/dev/null | sed 's/^/  /' || echo "  ✗ 未找到评测集"
