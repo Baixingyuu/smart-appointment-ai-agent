@@ -28,6 +28,11 @@ func main() {
 			fmt.Fprintf(os.Stderr, "错误: %v\n", err)
 			os.Exit(1)
 		}
+	case "eval-retrieval":
+		if err := runEvalRetrieval(os.Args[2:]); err != nil {
+			fmt.Fprintf(os.Stderr, "错误: %v\n", err)
+			os.Exit(1)
+		}
 	case "eval-intent":
 		if err := runEvalIntent(os.Args[2:]); err != nil {
 			fmt.Fprintf(os.Stderr, "错误: %v\n", err)
@@ -64,8 +69,15 @@ func usage() {
   agentdesk serve [选项]         启动 HTTP 服务
   agentdesk demo                 跑一遍完整工单链路（建单/派单/去重/升级/完成）
   agentdesk eval-assign [选项]   运行指派评测
+  agentdesk eval-retrieval [选项]  运行检索召回评测
   agentdesk eval-intent [选项]   运行意图分类评测
   agentdesk eval-trajectory [选项]  运行轨迹评测（工具选择/轮次/成本/延迟）
+
+eval-retrieval 选项:
+  -dataset string   检索评测集路径（默认 eval/datasets/retrieval.json）
+  -json string      把机读报告写入该路径
+  -k int            召回截断位置（默认 5）
+  -threshold float  覆盖检索器的分数阈值，用于做敏感性分析
 
 eval-intent 选项:
   -dataset string   意图评测集路径（默认 eval/datasets/intent.json）

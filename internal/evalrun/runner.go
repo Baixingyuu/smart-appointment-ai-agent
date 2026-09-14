@@ -11,6 +11,7 @@ import (
 	"github.com/mac/agentdesk/internal/agent"
 	"github.com/mac/agentdesk/internal/classify"
 	"github.com/mac/agentdesk/internal/eval"
+	"github.com/mac/agentdesk/internal/rag"
 )
 
 // AgentRunner 用真实 Agent 执行轨迹评测用例。
@@ -114,5 +115,42 @@ func (r *ClassifierRunner) ClassifyIntent(text string) (agent.IntentOutcome, err
 		Intent: result.Intent,
 		Parsed: result.Parsed,
 		Usage:  result.Usage,
+	}, nil
+}
+
+// RetrievalRunner 用真实检索器执行检索评测。
+type RetrievalRunner struct {
+	retriever *rag.Retriever
+	ctx       context.Context
+}
+
+// NewRetrievalRunner 构造检索评测用 runner。
+func NewRetrievalRunner(retriever *rag.Retriever, ctx context.Context) *RetrievalRunner {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return &RetrievalRunner{retriever: retriever, ctx: ctx}
+}
+
+// RetrieveForEval 实现 eval.Retriever。
+func (r *RetrievalRunner) RetrieveForEval(query string, topK int) (eval.RetrievalResult, error) {
+	options := r.retriever.Options()
+	// 用评测指定的 K 覆盖检索器默认值，使 Recall@K 的含义确定。
+	options.TopK = topK
+	engine := rag.NewWithScorer(r.retriever.Chunks(), r.retriever.Embedder(), r.retriever.Scorer(), options)
+	result := engine.Retrieve(r.ctx, query)
+
+	hits := make([]eval.RetrievalHit, 0, len(result.Hits))
+	for _, hit := range result.Hits {
+		hits = append(hits, eval.RetrievalHit{
+			DocID: hit.Chunk.DocID,
+			Chunk: hit.Chunk.ID,
+			Score: hit.Score,
+		})
+	}
+	return eval.RetrievalResult{
+		Hits:       hits,
+		DecidedHit: result.Gate.Sufficient,
+		Reason:     string(result.Gate.Reason),
 	}, nil
 }

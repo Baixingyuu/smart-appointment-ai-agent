@@ -16,6 +16,7 @@ help:
 	@echo "  make serve-offline  启动 HTTP 服务（离线脚本模型，无需密钥）"
 	@echo "  make eval        运行指派评测（基础集 + 对抗集）"
 	@echo "  make eval-intent 运行意图路由评测"
+	@echo "  make eval-retrieval 运行检索召回评测"
 	@echo "  make eval-trajectory 运行轨迹评测（可传 ARGS=\"-sabotage=...\"）"
 	@echo "  make eval-report 运行评测并写出 JSON 报告"
 	@echo "  make verify-data 独立校验评测集金标（精确有理数运算）"
@@ -57,6 +58,11 @@ eval:
 .PHONY: eval-intent
 eval-intent:
 	$(GO) run ./cmd/agentdesk eval-intent $(ARGS)
+
+# 检索召回评测：Recall@K / MRR / 假命中率
+.PHONY: eval-retrieval
+eval-retrieval:
+	$(GO) run ./cmd/agentdesk eval-retrieval $(ARGS)
 
 # 轨迹评测：工具选择/顺序/轮次/越界/成本/延迟
 # 可传 ARGS 注入缺陷以验证评测区分力，例如：

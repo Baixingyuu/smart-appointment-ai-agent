@@ -112,12 +112,14 @@ func (e *BM25Embedder) Embed(text string) []float64 {
 
 // Score 返回归一化到 0..1 的 BM25 相关度。
 //
-// 归一化的必要性：原始 BM25 分数随语料规模与查询长度变化
-// （可能是 3 分也可能是 30 分），而取部门控阈值是固定的 0..1 区间。
-// 除以「该查询的理论满分」后，分数含义变为「词项覆盖的充分程度」，
-// 与余弦相似度落在同一量纲，门控阈值因此可通用。
+// ⚠️ 该归一化分数**不适合作为门控判据**，仅用于排序与展示。
+// 实测发现它把两类查询的信号洗掉了：可回答查询的中位数 0.44，
+// 不可回答查询 0.46——几乎完全相同，据此设阈值只能二选一地
+// 牺牲召回或容忍假命中。
 //
-// 理论满分 = 所有查询词项都以饱和词频出现在一篇长度恰为平均长度的文档中。
+// 原因：除以「该查询的理论满分」后，短查询会因分母小而虚高，
+// 而无关的短查询恰恰就是短查询。门控应改用绝对判据：
+// 命中词项数（CoverageReporter.InVocabTermCount）与原始分数（RawScore）。
 func (e *BM25Embedder) Score(query string, document string) float64 {
 	raw := e.rawScore(query, document)
 	if raw <= 0 {
@@ -317,6 +319,22 @@ func (e *BM25Embedder) WeightedCoverage(query string, documents []string) (float
 		return 0, nil
 	}
 	return matchedWeight / totalWeight, matched
+}
+
+// InVocabTermCount 返回查询中出现在语料词表内的词项数量。
+//
+// 用途：作为「证据强度」的绝对判据。覆盖率是比例指标，对短查询会失真——
+// 无关查询中落在词表内的词项本就很少，匹配上其中一个就可能得到 100% 覆盖率，
+// 从而把门控抬过线（实测假命中率达 70%）。真实证据应当有多个词项同时命中。
+func (e *BM25Embedder) InVocabTermCount(query string) int {
+	seen := make(map[string]struct{})
+	for _, term := range tokenize(query) {
+		if _, ok := e.idf[term]; !ok {
+			continue
+		}
+		seen[term] = struct{}{}
+	}
+	return len(seen)
 }
 
 // RawScore 暴露原始 BM25 分数，供调试与对比使用。

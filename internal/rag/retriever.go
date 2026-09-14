@@ -55,6 +55,8 @@ type GateResult struct {
 	Message string
 	// Coverage 关键词覆盖率，仅当 Reason 为 low_coverage 时有诊断意义。
 	Coverage float64
+	// MatchedTerms 实际命中的查询词项，用于诊断「为什么判为不充分」。
+	MatchedTerms []string
 }
 
 // Options 检索参数。
@@ -64,6 +66,19 @@ type Options struct {
 	ScoreThreshold float64
 	// MinCoverage 提问关键词覆盖率下限，低于该值判定为不充分。
 	MinCoverage float64
+	// MinMatchedTerms 命中词项数下限。
+	//
+	// 这是对覆盖率的必要补充：覆盖率是比例，对短查询会失真——
+	// 无关查询里落在词表内的词项本就少，匹配上其中一个就可能是 100% 覆盖率。
+	// 要求至少命中若干个词项，才能把「偶然撞上一个词」与「确实讲同一件事」分开。
+	MinMatchedTerms int
+	// MinRawScore 稀疏检索的原始分数下限，仅在使用专用打分器时生效。
+	//
+	// 为什么用原始分数而非归一化分数：归一化除以「该查询的理论满分」，
+	// 会让短查询的分数虚高——而无关查询往往就是短查询。实测两类查询的
+	// 归一化分数中位数几乎相同（0.44 / 0.46），据此设阈值无法兼顾。
+	// 原始分数保留了区分力：可回答中位数 8.81，不可回答 3.18。
+	MinRawScore float64
 	// MaxContextItems 最终进入上下文的片段数上限。
 	MaxContextItems int
 	// MaxPerDoc 同一文档最多取几条，避免单文档刷屏挤占其他来源。
@@ -80,6 +95,8 @@ func DefaultOptions() Options {
 		TopK:            8,
 		ScoreThreshold:  0.35,
 		MinCoverage:     0.34,
+		MinMatchedTerms: 2,
+		MinRawScore:     3.0,
 		MaxContextItems: 4,
 		MaxPerDoc:       2,
 	}
@@ -102,6 +119,12 @@ func (o Options) normalize() Options {
 	}
 	if o.MaxPerDoc <= 0 {
 		o.MaxPerDoc = def.MaxPerDoc
+	}
+	if o.MinMatchedTerms <= 0 {
+		o.MinMatchedTerms = def.MinMatchedTerms
+	}
+	if o.MinRawScore <= 0 {
+		o.MinRawScore = def.MinRawScore
 	}
 	return o
 }
@@ -164,11 +187,32 @@ func New(chunks []Chunk, embedder Embedder, options Options) *Retriever {
 // ChunkCount 返回知识库片段数。
 func (r *Retriever) ChunkCount() int { return len(r.chunks) }
 
+// Chunks 返回全部片段（副本）。
+//
+// 暴露给评测与工具层重建检索器：评测需要用指定的 K 覆盖默认参数，
+// 而检索器本身是不可变的，因此只能据此重建。
+func (r *Retriever) Chunks() []Chunk {
+	ret := make([]Chunk, len(r.chunks))
+	copy(ret, r.chunks)
+	return ret
+}
+
+// Embedder 返回当前向量化实现。
+func (r *Retriever) Embedder() Embedder { return r.embedder }
+
+// Scorer 返回当前专用打分器，可能为空。
+func (r *Retriever) Scorer() Scorer { return r.scorer }
+
 // Options 返回生效的检索参数。
 func (r *Retriever) Options() Options { return r.options }
 
 // Retrieve 执行检索并做证据充分性判定。
 func (r *Retriever) Retrieve(ctx context.Context, query string) Result {
+	// 允许传 nil：离线评测与工具实现里常以 context.Background() 调用，
+	// 但测试与阈值扫描场景下传 nil 更自然，此处统一规范化。
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	result := Result{Query: strings.TrimSpace(query), Rounds: 1}
 
 	if result.Query == "" {
@@ -245,13 +289,25 @@ func (r *Retriever) gate(query string, hits []Hit) GateResult {
 		}
 	}
 
-	coverage := r.coverage(query, hits)
+	coverage, matchedTerms := r.coverage(query, hits)
 	// 覆盖率低于地板值即视为「无实质交集」。
 	//
 	// 为什么不能只判 coverage == 0：中文里「流程」「材料」「问题」这类泛词
 	// 会偶然出现在无关语料中，实测一个完全无关的提问也能拿到 9% 覆盖率。
 	// 9% 与 0% 在语义上等价——都代表「知识库没有这条知识」，
 	// 若归因为 low_coverage 会把改进方向误导到「调召回」，而实际该「补知识」。
+	// 绝对判据：命中词项数不足即视为偶然撞词，而非真实覆盖。
+	// 放在覆盖率之前判断，因为覆盖率对短查询会给出误导性的高分。
+	matchedCount := len(matchedTerms)
+	if matchedCount > 0 && matchedCount < r.options.MinMatchedTerms {
+		return GateResult{
+			Reason:   ReasonLowCoverage,
+			Coverage: coverage,
+			Message: fmt.Sprintf("仅命中 %d 个查询词项（下限 %d），不足以判定知识库覆盖该问题",
+				matchedCount, r.options.MinMatchedTerms),
+		}
+	}
+
 	if coverage < coverageFloor(r.options) {
 		return GateResult{
 			Reason:   ReasonNoHit,
@@ -262,15 +318,25 @@ func (r *Retriever) gate(query string, hits []Hit) GateResult {
 	}
 
 	top := hits[0].Score
-	if coverage < r.options.MinCoverage {
-		return GateResult{
-			Reason:   ReasonLowCoverage,
-			Coverage: coverage,
-			Message: fmt.Sprintf("命中内容未覆盖提问关键信息（覆盖率 %.0f%%，下限 %.0f%%）",
-				coverage*100, r.options.MinCoverage*100),
+
+	// 相似度判据：稀疏检索走绝对判据，稠密向量走归一化分数判据。
+	//
+	// 必须二选一而非叠加：归一化分数在短查询上会虚高，实测两类查询的
+	// 中位数几乎相同（0.44 / 0.46），无法据此区分。若在绝对判据之外
+	// 再叠加归一化判据，会误伤强匹配——例如「服务器上程序连不上外面的网址」
+	// 原始分 6.68、命中 6 个词项、覆盖率 87%，证据充分，
+	// 却因归一化分数偏低被误判为相关度过低。
+	if reporter, ok := r.scorer.(CoverageReporter); ok {
+		if raw := reporter.RawScore(query, hits[0].Chunk.titleAndContent()); raw < r.options.MinRawScore {
+			return GateResult{
+				Reason:   ReasonLowScore,
+				Coverage: coverage,
+				Message: fmt.Sprintf("词面匹配过弱（最高 %.2f，下限 %.2f），不足以作答",
+					raw, r.options.MinRawScore),
+			}
 		}
-	}
-	if top < r.options.ScoreThreshold {
+	} else if top < r.options.ScoreThreshold {
+		// 余弦相似度天然落在 0..1，量纲可比，直接用阈值判定。
 		return GateResult{
 			Reason:   ReasonLowScore,
 			Coverage: coverage,
@@ -279,12 +345,24 @@ func (r *Retriever) gate(query string, hits []Hit) GateResult {
 		}
 	}
 
+	// 覆盖率判据独立于相似度判据保留：它能发现「沾到边但没讲到点子上」，
+	// 而相似度判据对此不敏感（词项确实出现了，只是没覆盖提问的关键信息）。
+	if coverage < r.options.MinCoverage {
+		return GateResult{
+			Reason:   ReasonLowCoverage,
+			Coverage: coverage,
+			Message: fmt.Sprintf("命中内容未覆盖提问关键信息（覆盖率 %.0f%%，下限 %.0f%%）",
+				coverage*100, r.options.MinCoverage*100),
+		}
+	}
+
 	return GateResult{
-		Sufficient: true,
-		Reason:     ReasonSufficient,
-		Coverage:   coverage,
-		Message: fmt.Sprintf("证据充分：命中 %d 条，最高相关度 %.2f，关键词覆盖 %.0f%%",
-			len(hits), top, coverage*100),
+		Sufficient:   true,
+		Reason:       ReasonSufficient,
+		Coverage:     coverage,
+		MatchedTerms: matchedTerms,
+		Message: fmt.Sprintf("证据充分：命中 %d 条、匹配 %d 个词项，最高相关度 %.2f，关键词覆盖 %.0f%%",
+			len(hits), matchedCount, top, coverage*100),
 	}
 }
 
@@ -329,26 +407,29 @@ func (r *Retriever) buildContext(hits []Hit) string {
 	return strings.TrimSpace(b.String())
 }
 
-// CoverageReporter 可选能力：按词项区分度返回覆盖率。
+// CoverageReporter 可选能力：按词项区分度返回覆盖率与命中词项。
 //
 // 稀疏检索器（BM25）实现该接口，使覆盖率不把「鉴权」与「什么」同等看待。
+// 命中词项数是必需的第二判据：覆盖率对短查询会失真（见 gate 的实现说明）。
 type CoverageReporter interface {
 	WeightedCoverage(query string, documents []string) (float64, []string)
+	InVocabTermCount(query string) int
+	RawScore(query string, document string) float64
 }
 
-// coverage 计算提问被命中片段覆盖的程度。
+// coverage 计算提问被命中片段覆盖的程度，以及命中的词项。
 //
-// 优先使用检索器提供的 IDF 加权覆盖率；不支持时退回朴素词面覆盖率。
-func (r *Retriever) coverage(query string, hits []Hit) float64 {
+// 优先使用检索器提供的 IDF 加权覆盖率；不支持时退回朴素词面覆盖率
+// （此时匹配词项数未知，返回 -1 表示该判据不可用，门控不据此拒绝）。
+func (r *Retriever) coverage(query string, hits []Hit) (float64, []string) {
 	if reporter, ok := r.scorer.(CoverageReporter); ok {
 		documents := make([]string, 0, len(hits))
 		for _, hit := range hits {
 			documents = append(documents, hit.Chunk.titleAndContent())
 		}
-		coverage, _ := reporter.WeightedCoverage(query, documents)
-		return coverage
+		return reporter.WeightedCoverage(query, documents)
 	}
-	return keywordCoverage(query, hits)
+	return keywordCoverage(query, hits), nil
 }
 
 // keywordCoverage 计算提问关键词被命中片段覆盖的比例。
@@ -450,3 +531,8 @@ func (c Chunk) titleAndContent() string {
 
 // ErrNoEmbedder 在缺少向量化实现时返回。
 var ErrNoEmbedder = errors.New("未配置向量化实现")
+
+// CoverageForTest 暴露覆盖率与命中词项，仅供评测做信号分布分析。
+func (r *Retriever) CoverageForTest(query string, result Result) (float64, []string) {
+	return r.coverage(query, result.Hits)
+}
