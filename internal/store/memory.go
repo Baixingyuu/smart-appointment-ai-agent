@@ -48,6 +48,15 @@ type Store interface {
 	// 进展
 	AppendProgress(p domain.TicketProgress) error
 	ProgressByTicket(ticketID int64) []domain.TicketProgress
+
+	// 确认中断
+	SaveInterrupt(i domain.Interrupt) (int64, error)
+	GetInterrupt(id int64) (domain.Interrupt, error)
+	// FindPendingInterrupt 返回会话下最新的待确认中断。
+	//
+	// 返回最新一条而非全部：用户的下一条消息只应恢复最近一次提问，
+	// 同时恢复多条会让一次回复触发多个写操作。
+	FindPendingInterrupt(conversationID int64) (domain.Interrupt, bool)
 }
 
 // Memory 是 Store 的并发安全内存实现。
@@ -64,6 +73,9 @@ type Memory struct {
 	nextLogID  int64
 	nextProgID int64
 
+	interrupts      map[int64]domain.Interrupt
+	nextInterruptID int64
+
 	// now 允许测试注入固定时钟，使时间相关断言可复现。
 	now func() time.Time
 }
@@ -71,10 +83,11 @@ type Memory struct {
 // NewMemory 构造空的内存存储。
 func NewMemory() *Memory {
 	return &Memory{
-		employees: make(map[int64]domain.Employee),
-		skills:    make(map[int64]domain.Skill),
-		tickets:   make(map[int64]domain.Ticket),
-		now:       time.Now,
+		employees:  make(map[int64]domain.Employee),
+		skills:     make(map[int64]domain.Skill),
+		tickets:    make(map[int64]domain.Ticket),
+		interrupts: make(map[int64]domain.Interrupt),
+		now:        time.Now,
 	}
 }
 
@@ -268,4 +281,62 @@ func (m *Memory) ProgressByTicket(ticketID int64) []domain.TicketProgress {
 		}
 	}
 	return ret
+}
+
+// SaveInterrupt 保存中断。ID 为 0 时自动分配并返回新 ID。
+func (m *Memory) SaveInterrupt(i domain.Interrupt) (int64, error) {
+	if err := i.Validate(); err != nil {
+		return 0, err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	now := m.now()
+	if i.ID <= 0 {
+		m.nextInterruptID++
+		i.ID = m.nextInterruptID
+		i.CreatedAt = now
+	} else if existing, ok := m.interrupts[i.ID]; ok {
+		// 保留原始创建时间，只推进更新时间，使"何时发起确认"不丢失。
+		i.CreatedAt = existing.CreatedAt
+	} else if i.CreatedAt.IsZero() {
+		i.CreatedAt = now
+	}
+	i.UpdatedAt = now
+	if i.ID > m.nextInterruptID {
+		m.nextInterruptID = i.ID
+	}
+	m.interrupts[i.ID] = i
+	return i.ID, nil
+}
+
+func (m *Memory) GetInterrupt(id int64) (domain.Interrupt, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	i, ok := m.interrupts[id]
+	if !ok {
+		return domain.Interrupt{}, ErrNotFound
+	}
+	return i, nil
+}
+
+func (m *Memory) FindPendingInterrupt(conversationID int64) (domain.Interrupt, bool) {
+	if conversationID <= 0 {
+		return domain.Interrupt{}, false
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	var found domain.Interrupt
+	var ok bool
+	for _, item := range m.interrupts {
+		if item.ConversationID != conversationID || item.Status != domain.InterruptPending {
+			continue
+		}
+		// 取最新的一条：同一会话可能先后发起过多次确认。
+		if !ok || item.ID > found.ID {
+			found, ok = item, true
+		}
+	}
+	return found, ok
 }
