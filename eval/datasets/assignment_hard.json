@@ -1,0 +1,1310 @@
+{
+  "version": 1,
+  "description": "对抗样本集：每条都安排'技能无关但更闲/响应更好'的竞争者，仅当技能权重真正生效时才能选对。用于证明评测具备区分能力，可与基础集合并或单独运行。技能编号见基础集；权重 skill=0.6 load=0.2 recency=0.2。",
+  "cases": [
+    {
+      "id": "as-hard-001",
+      "scenario": "skill_dominates_idle_beginner",
+      "ticket": {
+        "title": "接口返回 500，线上订单创建失败",
+        "category": "request",
+        "priority": "P1",
+        "requiredSkillIds": [
+          2,
+          3
+        ]
+      },
+      "employees": [
+        {
+          "id": 101,
+          "name": "接口组-张伟",
+          "active": true,
+          "currentLoad": 2,
+          "maxConcurrent": 5,
+          "recency": 0.5,
+          "skillIds": [
+            2,
+            3,
+            11
+          ]
+        },
+        {
+          "id": 102,
+          "name": "实习坐席-李娜",
+          "active": true,
+          "currentLoad": 0,
+          "maxConcurrent": 5,
+          "recency": 0.9,
+          "skillIds": [
+            6
+          ]
+        }
+      ],
+      "expect": {
+        "goldAssigneeId": 101,
+        "noMatch": false,
+        "rationale": "接口组-张伟(id=101) Jaccard=0.667 负载=0.600 响应=0.50 → 0.6200; 实习坐席-李娜(id=102) Jaccard=0.000 负载=1.000 响应=0.90 → 0.3800 ⇒ 选中 101"
+      }
+    },
+    {
+      "id": "as-hard-002",
+      "scenario": "skill_dominates_idle_beginner",
+      "ticket": {
+        "title": "数据库连接池耗尽导致查询超时",
+        "category": "consultation",
+        "priority": "P2",
+        "requiredSkillIds": [
+          3,
+          4
+        ]
+      },
+      "employees": [
+        {
+          "id": 101,
+          "name": "数据库组-王强",
+          "active": true,
+          "currentLoad": 3,
+          "maxConcurrent": 5,
+          "recency": 0.4,
+          "skillIds": [
+            3,
+            4
+          ]
+        },
+        {
+          "id": 102,
+          "name": "通用坐席-赵敏",
+          "active": true,
+          "currentLoad": 0,
+          "maxConcurrent": 5,
+          "recency": 0.95,
+          "skillIds": [
+            8
+          ]
+        }
+      ],
+      "expect": {
+        "goldAssigneeId": 101,
+        "noMatch": false,
+        "rationale": "数据库组-王强(id=101) Jaccard=1.000 负载=0.400 响应=0.40 → 0.7600; 通用坐席-赵敏(id=102) Jaccard=0.000 负载=1.000 响应=0.95 → 0.3900 ⇒ 选中 101"
+      }
+    },
+    {
+      "id": "as-hard-003",
+      "scenario": "skill_dominates_idle_beginner",
+      "ticket": {
+        "title": "部署后静态资源 404",
+        "category": "change",
+        "priority": "P3",
+        "requiredSkillIds": [
+          8,
+          6
+        ]
+      },
+      "employees": [
+        {
+          "id": 101,
+          "name": "运维组-陈磊",
+          "active": true,
+          "currentLoad": 2,
+          "maxConcurrent": 4,
+          "recency": 0.5,
+          "skillIds": [
+            8,
+            6
+          ]
+        },
+        {
+          "id": 102,
+          "name": "通用坐席-孙悦",
+          "active": true,
+          "currentLoad": 0,
+          "maxConcurrent": 4,
+          "recency": 0.9,
+          "skillIds": [
+            10
+          ]
+        }
+      ],
+      "expect": {
+        "goldAssigneeId": 101,
+        "noMatch": false,
+        "rationale": "运维组-陈磊(id=101) Jaccard=1.000 负载=0.500 响应=0.50 → 0.8000; 通用坐席-孙悦(id=102) Jaccard=0.000 负载=1.000 响应=0.90 → 0.3800 ⇒ 选中 101"
+      }
+    },
+    {
+      "id": "as-hard-004",
+      "scenario": "skill_dominates_idle_beginner",
+      "ticket": {
+        "title": "账号被锁定无法登录后台",
+        "category": "incident",
+        "priority": "P0",
+        "requiredSkillIds": [
+          9
+        ]
+      },
+      "employees": [
+        {
+          "id": 101,
+          "name": "权限组-周涛",
+          "active": true,
+          "currentLoad": 3,
+          "maxConcurrent": 6,
+          "recency": 0.4,
+          "skillIds": [
+            9,
+            5
+          ]
+        },
+        {
+          "id": 102,
+          "name": "通用坐席-吴迪",
+          "active": true,
+          "currentLoad": 0,
+          "maxConcurrent": 6,
+          "recency": 0.95,
+          "skillIds": [
+            4
+          ]
+        }
+      ],
+      "expect": {
+        "goldAssigneeId": 101,
+        "noMatch": false,
+        "rationale": "权限组-周涛(id=101) Jaccard=0.500 负载=0.500 响应=0.40 → 0.4800; 通用坐席-吴迪(id=102) Jaccard=0.000 负载=1.000 响应=0.95 → 0.3900 ⇒ 选中 101"
+      }
+    },
+    {
+      "id": "as-hard-005",
+      "scenario": "skill_dominates_idle_beginner",
+      "ticket": {
+        "title": "计费账单金额与合同不一致",
+        "category": "request",
+        "priority": "P1",
+        "requiredSkillIds": [
+          10
+        ]
+      },
+      "employees": [
+        {
+          "id": 101,
+          "name": "计费组-郑爽",
+          "active": true,
+          "currentLoad": 2,
+          "maxConcurrent": 4,
+          "recency": 0.5,
+          "skillIds": [
+            10,
+            11
+          ]
+        },
+        {
+          "id": 102,
+          "name": "通用坐席-冯磊",
+          "active": true,
+          "currentLoad": 0,
+          "maxConcurrent": 4,
+          "recency": 0.9,
+          "skillIds": [
+            7
+          ]
+        }
+      ],
+      "expect": {
+        "goldAssigneeId": 101,
+        "noMatch": false,
+        "rationale": "计费组-郑爽(id=101) Jaccard=0.500 负载=0.500 响应=0.50 → 0.5000; 通用坐席-冯磊(id=102) Jaccard=0.000 负载=1.000 响应=0.90 → 0.3800 ⇒ 选中 101"
+      }
+    },
+    {
+      "id": "as-hard-006",
+      "scenario": "skill_overcomes_heavy_load",
+      "ticket": {
+        "title": "客户端启动闪退，影响所有安卓用户",
+        "category": "consultation",
+        "priority": "P2",
+        "requiredSkillIds": [
+          7
+        ]
+      },
+      "employees": [
+        {
+          "id": 201,
+          "name": "客户端组-何静",
+          "active": true,
+          "currentLoad": 4,
+          "maxConcurrent": 5,
+          "recency": 0.5,
+          "skillIds": [
+            7,
+            4
+          ]
+        },
+        {
+          "id": 202,
+          "name": "空闲坐席-许峰",
+          "active": true,
+          "currentLoad": 0,
+          "maxConcurrent": 5,
+          "recency": 0.95,
+          "skillIds": [
+            12
+          ]
+        }
+      ],
+      "expect": {
+        "goldAssigneeId": 201,
+        "noMatch": false,
+        "rationale": "客户端组-何静(id=201) Jaccard=0.500 负载=0.200 响应=0.50 → 0.4400; 空闲坐席-许峰(id=202) Jaccard=0.000 负载=1.000 响应=0.95 → 0.3900 ⇒ 选中 201"
+      }
+    },
+    {
+      "id": "as-hard-007",
+      "scenario": "skill_overcomes_heavy_load",
+      "ticket": {
+        "title": "数据同步任务持续失败",
+        "category": "change",
+        "priority": "P3",
+        "requiredSkillIds": [
+          11
+        ]
+      },
+      "employees": [
+        {
+          "id": 201,
+          "name": "数据组-邓超",
+          "active": true,
+          "currentLoad": 4,
+          "maxConcurrent": 5,
+          "recency": 0.4,
+          "skillIds": [
+            11,
+            3
+          ]
+        },
+        {
+          "id": 202,
+          "name": "空闲坐席-曾毅",
+          "active": true,
+          "currentLoad": 0,
+          "maxConcurrent": 5,
+          "recency": 0.95,
+          "skillIds": [
+            1
+          ]
+        }
+      ],
+      "expect": {
+        "goldAssigneeId": 201,
+        "noMatch": false,
+        "rationale": "数据组-邓超(id=201) Jaccard=0.500 负载=0.200 响应=0.40 → 0.4200; 空闲坐席-曾毅(id=202) Jaccard=0.000 负载=1.000 响应=0.95 → 0.3900 ⇒ 选中 201"
+      }
+    },
+    {
+      "id": "as-hard-008",
+      "scenario": "skill_overcomes_heavy_load",
+      "ticket": {
+        "title": "硬件网关频繁掉线",
+        "category": "incident",
+        "priority": "P0",
+        "requiredSkillIds": [
+          12
+        ]
+      },
+      "employees": [
+        {
+          "id": 201,
+          "name": "硬件组-范冰",
+          "active": true,
+          "currentLoad": 4,
+          "maxConcurrent": 5,
+          "recency": 0.5,
+          "skillIds": [
+            12
+          ]
+        },
+        {
+          "id": 202,
+          "name": "空闲坐席-方磊",
+          "active": true,
+          "currentLoad": 0,
+          "maxConcurrent": 5,
+          "recency": 0.9,
+          "skillIds": [
+            6
+          ]
+        }
+      ],
+      "expect": {
+        "goldAssigneeId": 201,
+        "noMatch": false,
+        "rationale": "硬件组-范冰(id=201) Jaccard=1.000 负载=0.200 响应=0.50 → 0.7400; 空闲坐席-方磊(id=202) Jaccard=0.000 负载=1.000 响应=0.90 → 0.3800 ⇒ 选中 201"
+      }
+    },
+    {
+      "id": "as-hard-009",
+      "scenario": "skill_overcomes_poor_recency",
+      "ticket": {
+        "title": "安全扫描报告存在高危漏洞",
+        "category": "request",
+        "priority": "P1",
+        "requiredSkillIds": [
+          5
+        ]
+      },
+      "employees": [
+        {
+          "id": 301,
+          "name": "安全组-袁泉",
+          "active": true,
+          "currentLoad": 1,
+          "maxConcurrent": 4,
+          "recency": 0.1,
+          "skillIds": [
+            5,
+            8
+          ]
+        },
+        {
+          "id": 302,
+          "name": "新鲜坐席-崔健",
+          "active": true,
+          "currentLoad": 0,
+          "maxConcurrent": 4,
+          "recency": 1.0,
+          "skillIds": [
+            2
+          ]
+        }
+      ],
+      "expect": {
+        "goldAssigneeId": 301,
+        "noMatch": false,
+        "rationale": "安全组-袁泉(id=301) Jaccard=0.500 负载=0.750 响应=0.10 → 0.4700; 新鲜坐席-崔健(id=302) Jaccard=0.000 负载=1.000 响应=1.00 → 0.4000 ⇒ 选中 301"
+      }
+    },
+    {
+      "id": "as-hard-010",
+      "scenario": "skill_overcomes_poor_recency",
+      "ticket": {
+        "title": "前端页面白屏，控制台报错",
+        "category": "consultation",
+        "priority": "P2",
+        "requiredSkillIds": [
+          6
+        ]
+      },
+      "employees": [
+        {
+          "id": 301,
+          "name": "前端组-钱枫",
+          "active": true,
+          "currentLoad": 1,
+          "maxConcurrent": 4,
+          "recency": 0.1,
+          "skillIds": [
+            6,
+            7
+          ]
+        },
+        {
+          "id": 302,
+          "name": "新鲜坐席-汤唯",
+          "active": true,
+          "currentLoad": 0,
+          "maxConcurrent": 4,
+          "recency": 1.0,
+          "skillIds": [
+            9
+          ]
+        }
+      ],
+      "expect": {
+        "goldAssigneeId": 301,
+        "noMatch": false,
+        "rationale": "前端组-钱枫(id=301) Jaccard=0.500 负载=0.750 响应=0.10 → 0.4700; 新鲜坐席-汤唯(id=302) Jaccard=0.000 负载=1.000 响应=1.00 → 0.4000 ⇒ 选中 301"
+      }
+    },
+    {
+      "id": "as-hard-011",
+      "scenario": "weak_overlap_beats_unrelated",
+      "ticket": {
+        "title": "接口偶发超时，需要链路排查",
+        "category": "change",
+        "priority": "P3",
+        "requiredSkillIds": [
+          2,
+          4
+        ]
+      },
+      "employees": [
+        {
+          "id": 401,
+          "name": "接口组-姚明",
+          "active": true,
+          "currentLoad": 1,
+          "maxConcurrent": 4,
+          "recency": 0.6,
+          "skillIds": [
+            2
+          ]
+        },
+        {
+          "id": 402,
+          "name": "无关坐席-刘翔",
+          "active": true,
+          "currentLoad": 0,
+          "maxConcurrent": 4,
+          "recency": 0.9,
+          "skillIds": [
+            12
+          ]
+        }
+      ],
+      "expect": {
+        "goldAssigneeId": 401,
+        "noMatch": false,
+        "rationale": "接口组-姚明(id=401) Jaccard=0.500 负载=0.750 响应=0.60 → 0.5700; 无关坐席-刘翔(id=402) Jaccard=0.000 负载=1.000 响应=0.90 → 0.3800 ⇒ 选中 401"
+      }
+    },
+    {
+      "id": "as-hard-012",
+      "scenario": "weak_overlap_beats_unrelated",
+      "ticket": {
+        "title": "数据库慢查询导致报表加载缓慢",
+        "category": "incident",
+        "priority": "P0",
+        "requiredSkillIds": [
+          3,
+          4
+        ]
+      },
+      "employees": [
+        {
+          "id": 401,
+          "name": "数据库组-李宁",
+          "active": true,
+          "currentLoad": 1,
+          "maxConcurrent": 4,
+          "recency": 0.6,
+          "skillIds": [
+            3
+          ]
+        },
+        {
+          "id": 402,
+          "name": "无关坐席-孙杨",
+          "active": true,
+          "currentLoad": 0,
+          "maxConcurrent": 4,
+          "recency": 0.9,
+          "skillIds": [
+            10
+          ]
+        }
+      ],
+      "expect": {
+        "goldAssigneeId": 401,
+        "noMatch": false,
+        "rationale": "数据库组-李宁(id=401) Jaccard=0.500 负载=0.750 响应=0.60 → 0.5700; 无关坐席-孙杨(id=402) Jaccard=0.000 负载=1.000 响应=0.90 → 0.3800 ⇒ 选中 401"
+      }
+    },
+    {
+      "id": "as-hard-013",
+      "scenario": "weak_overlap_beats_unrelated",
+      "ticket": {
+        "title": "移动端无法上传附件",
+        "category": "request",
+        "priority": "P1",
+        "requiredSkillIds": [
+          7
+        ]
+      },
+      "employees": [
+        {
+          "id": 401,
+          "name": "客户端组-张怡宁",
+          "active": true,
+          "currentLoad": 2,
+          "maxConcurrent": 4,
+          "recency": 0.6,
+          "skillIds": [
+            7
+          ]
+        },
+        {
+          "id": 402,
+          "name": "无关坐席-马龙",
+          "active": true,
+          "currentLoad": 0,
+          "maxConcurrent": 4,
+          "recency": 0.9,
+          "skillIds": [
+            5
+          ]
+        }
+      ],
+      "expect": {
+        "goldAssigneeId": 401,
+        "noMatch": false,
+        "rationale": "客户端组-张怡宁(id=401) Jaccard=1.000 负载=0.500 响应=0.60 → 0.8200; 无关坐席-马龙(id=402) Jaccard=0.000 负载=1.000 响应=0.90 → 0.3800 ⇒ 选中 401"
+      }
+    },
+    {
+      "id": "as-hard-014",
+      "scenario": "weak_overlap_beats_unrelated",
+      "ticket": {
+        "title": "用户权限变更未生效",
+        "category": "consultation",
+        "priority": "P2",
+        "requiredSkillIds": [
+          9
+        ]
+      },
+      "employees": [
+        {
+          "id": 401,
+          "name": "权限组-林丹",
+          "active": true,
+          "currentLoad": 2,
+          "maxConcurrent": 4,
+          "recency": 0.6,
+          "skillIds": [
+            9
+          ]
+        },
+        {
+          "id": 402,
+          "name": "无关坐席-邹市明",
+          "active": true,
+          "currentLoad": 0,
+          "maxConcurrent": 4,
+          "recency": 0.9,
+          "skillIds": [
+            1
+          ]
+        }
+      ],
+      "expect": {
+        "goldAssigneeId": 401,
+        "noMatch": false,
+        "rationale": "权限组-林丹(id=401) Jaccard=1.000 负载=0.500 响应=0.60 → 0.8200; 无关坐席-邹市明(id=402) Jaccard=0.000 负载=1.000 响应=0.90 → 0.3800 ⇒ 选中 401"
+      }
+    },
+    {
+      "id": "as-hard-015",
+      "scenario": "specialist_beats_generalist",
+      "ticket": {
+        "title": "核心接口全链路超时",
+        "category": "change",
+        "priority": "P3",
+        "requiredSkillIds": [
+          2,
+          3
+        ]
+      },
+      "employees": [
+        {
+          "id": 501,
+          "name": "接口专才-高峰",
+          "active": true,
+          "currentLoad": 2,
+          "maxConcurrent": 5,
+          "recency": 0.6,
+          "skillIds": [
+            2,
+            3
+          ]
+        },
+        {
+          "id": 502,
+          "name": "全栈通才-黄磊",
+          "active": true,
+          "currentLoad": 2,
+          "maxConcurrent": 5,
+          "recency": 0.6,
+          "skillIds": [
+            2,
+            3,
+            5,
+            6,
+            7,
+            8
+          ]
+        }
+      ],
+      "expect": {
+        "goldAssigneeId": 501,
+        "noMatch": false,
+        "rationale": "接口专才-高峰(id=501) Jaccard=1.000 负载=0.600 响应=0.60 → 0.8400; 全栈通才-黄磊(id=502) Jaccard=0.333 负载=0.600 响应=0.60 → 0.4400 ⇒ 选中 501"
+      }
+    },
+    {
+      "id": "as-hard-016",
+      "scenario": "specialist_beats_generalist",
+      "ticket": {
+        "title": "部署脚本执行失败导致回滚",
+        "category": "incident",
+        "priority": "P0",
+        "requiredSkillIds": [
+          8
+        ]
+      },
+      "employees": [
+        {
+          "id": 501,
+          "name": "部署专才-文章",
+          "active": true,
+          "currentLoad": 1,
+          "maxConcurrent": 5,
+          "recency": 0.6,
+          "skillIds": [
+            8
+          ]
+        },
+        {
+          "id": 502,
+          "name": "全栈通才-白百何",
+          "active": true,
+          "currentLoad": 1,
+          "maxConcurrent": 5,
+          "recency": 0.6,
+          "skillIds": [
+            8,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ]
+        }
+      ],
+      "expect": {
+        "goldAssigneeId": 501,
+        "noMatch": false,
+        "rationale": "部署专才-文章(id=501) Jaccard=1.000 负载=0.800 响应=0.60 → 0.8800; 全栈通才-白百何(id=502) Jaccard=0.125 负载=0.800 响应=0.60 → 0.3550 ⇒ 选中 501"
+      }
+    },
+    {
+      "id": "as-hard-017",
+      "scenario": "specialist_beats_generalist",
+      "ticket": {
+        "title": "密码重置邮件收不到",
+        "category": "request",
+        "priority": "P1",
+        "requiredSkillIds": [
+          9
+        ]
+      },
+      "employees": [
+        {
+          "id": 501,
+          "name": "权限专才-陈坤",
+          "active": true,
+          "currentLoad": 2,
+          "maxConcurrent": 5,
+          "recency": 0.6,
+          "skillIds": [
+            9
+          ]
+        },
+        {
+          "id": 502,
+          "name": "全栈通才-周迅",
+          "active": true,
+          "currentLoad": 2,
+          "maxConcurrent": 5,
+          "recency": 0.6,
+          "skillIds": [
+            9,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6
+          ]
+        }
+      ],
+      "expect": {
+        "goldAssigneeId": 501,
+        "noMatch": false,
+        "rationale": "权限专才-陈坤(id=501) Jaccard=1.000 负载=0.600 响应=0.60 → 0.8400; 全栈通才-周迅(id=502) Jaccard=0.143 负载=0.600 响应=0.60 → 0.3257 ⇒ 选中 501"
+      }
+    },
+    {
+      "id": "as-hard-018",
+      "scenario": "specialist_beats_generalist",
+      "ticket": {
+        "title": "账单导出功能报错",
+        "category": "consultation",
+        "priority": "P2",
+        "requiredSkillIds": [
+          10,
+          11
+        ]
+      },
+      "employees": [
+        {
+          "id": 501,
+          "name": "计费专才-徐静蕾",
+          "active": true,
+          "currentLoad": 1,
+          "maxConcurrent": 5,
+          "recency": 0.6,
+          "skillIds": [
+            10,
+            11
+          ]
+        },
+        {
+          "id": 502,
+          "name": "全栈通才-李冰冰",
+          "active": true,
+          "currentLoad": 1,
+          "maxConcurrent": 5,
+          "recency": 0.6,
+          "skillIds": [
+            10,
+            11,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8
+          ]
+        }
+      ],
+      "expect": {
+        "goldAssigneeId": 501,
+        "noMatch": false,
+        "rationale": "计费专才-徐静蕾(id=501) Jaccard=1.000 负载=0.800 响应=0.60 → 0.8800; 全栈通才-李冰冰(id=502) Jaccard=0.200 负载=0.800 响应=0.60 → 0.4000 ⇒ 选中 501"
+      }
+    },
+    {
+      "id": "as-hard-019",
+      "scenario": "skill_dominates_idle_beginner",
+      "ticket": {
+        "title": "网关设备离线告警",
+        "category": "change",
+        "priority": "P3",
+        "requiredSkillIds": [
+          12,
+          1
+        ]
+      },
+      "employees": [
+        {
+          "id": 101,
+          "name": "硬件网络组-葛优",
+          "active": true,
+          "currentLoad": 3,
+          "maxConcurrent": 6,
+          "recency": 0.5,
+          "skillIds": [
+            12,
+            1
+          ]
+        },
+        {
+          "id": 102,
+          "name": "通用坐席-姜文",
+          "active": true,
+          "currentLoad": 0,
+          "maxConcurrent": 6,
+          "recency": 0.95,
+          "skillIds": [
+            7
+          ]
+        }
+      ],
+      "expect": {
+        "goldAssigneeId": 101,
+        "noMatch": false,
+        "rationale": "硬件网络组-葛优(id=101) Jaccard=1.000 负载=0.500 响应=0.50 → 0.8000; 通用坐席-姜文(id=102) Jaccard=0.000 负载=1.000 响应=0.95 → 0.3900 ⇒ 选中 101"
+      }
+    },
+    {
+      "id": "as-hard-020",
+      "scenario": "skill_overcomes_heavy_load",
+      "ticket": {
+        "title": "订单状态同步延迟超过一小时",
+        "category": "incident",
+        "priority": "P0",
+        "requiredSkillIds": [
+          11,
+          2
+        ]
+      },
+      "employees": [
+        {
+          "id": 201,
+          "name": "同步组-巩俐",
+          "active": true,
+          "currentLoad": 5,
+          "maxConcurrent": 6,
+          "recency": 0.4,
+          "skillIds": [
+            11,
+            2
+          ]
+        },
+        {
+          "id": 202,
+          "name": "空闲坐席-章子怡",
+          "active": true,
+          "currentLoad": 0,
+          "maxConcurrent": 6,
+          "recency": 0.95,
+          "skillIds": [
+            6
+          ]
+        }
+      ],
+      "expect": {
+        "goldAssigneeId": 201,
+        "noMatch": false,
+        "rationale": "同步组-巩俐(id=201) Jaccard=1.000 负载=0.167 响应=0.40 → 0.7133; 空闲坐席-章子怡(id=202) Jaccard=0.000 负载=1.000 响应=0.95 → 0.3900 ⇒ 选中 201"
+      }
+    },
+    {
+      "id": "as-hard-021",
+      "scenario": "skill_overcomes_poor_recency",
+      "ticket": {
+        "title": "前端登录页样式错乱",
+        "category": "request",
+        "priority": "P1",
+        "requiredSkillIds": [
+          6,
+          4
+        ]
+      },
+      "employees": [
+        {
+          "id": 301,
+          "name": "前端组-王菲",
+          "active": true,
+          "currentLoad": 2,
+          "maxConcurrent": 5,
+          "recency": 0.15,
+          "skillIds": [
+            6,
+            4
+          ]
+        },
+        {
+          "id": 302,
+          "name": "新鲜坐席-那英",
+          "active": true,
+          "currentLoad": 0,
+          "maxConcurrent": 5,
+          "recency": 1.0,
+          "skillIds": [
+            3
+          ]
+        }
+      ],
+      "expect": {
+        "goldAssigneeId": 301,
+        "noMatch": false,
+        "rationale": "前端组-王菲(id=301) Jaccard=1.000 负载=0.600 响应=0.15 → 0.7500; 新鲜坐席-那英(id=302) Jaccard=0.000 负载=1.000 响应=1.00 → 0.4000 ⇒ 选中 301"
+      }
+    },
+    {
+      "id": "as-hard-022",
+      "scenario": "weak_overlap_beats_unrelated",
+      "ticket": {
+        "title": "安全策略误拦截正常请求",
+        "category": "consultation",
+        "priority": "P2",
+        "requiredSkillIds": [
+          5,
+          2
+        ]
+      },
+      "employees": [
+        {
+          "id": 401,
+          "name": "安全组-刘德华",
+          "active": true,
+          "currentLoad": 2,
+          "maxConcurrent": 5,
+          "recency": 0.6,
+          "skillIds": [
+            5
+          ]
+        },
+        {
+          "id": 402,
+          "name": "无关坐席-张学友",
+          "active": true,
+          "currentLoad": 0,
+          "maxConcurrent": 5,
+          "recency": 0.9,
+          "skillIds": [
+            12
+          ]
+        }
+      ],
+      "expect": {
+        "goldAssigneeId": 401,
+        "noMatch": false,
+        "rationale": "安全组-刘德华(id=401) Jaccard=0.500 负载=0.600 响应=0.60 → 0.5400; 无关坐席-张学友(id=402) Jaccard=0.000 负载=1.000 响应=0.90 → 0.3800 ⇒ 选中 401"
+      }
+    },
+    {
+      "id": "as-hard-023",
+      "scenario": "skill_dominates_idle_beginner",
+      "ticket": {
+        "title": "性能监控显示内存持续增长",
+        "category": "change",
+        "priority": "P3",
+        "requiredSkillIds": [
+          4
+        ]
+      },
+      "employees": [
+        {
+          "id": 101,
+          "name": "性能组-郭富城",
+          "active": true,
+          "currentLoad": 4,
+          "maxConcurrent": 6,
+          "recency": 0.5,
+          "skillIds": [
+            4,
+            3
+          ]
+        },
+        {
+          "id": 102,
+          "name": "通用坐席-黎明",
+          "active": true,
+          "currentLoad": 0,
+          "maxConcurrent": 6,
+          "recency": 0.95,
+          "skillIds": [
+            9
+          ]
+        }
+      ],
+      "expect": {
+        "goldAssigneeId": 101,
+        "noMatch": false,
+        "rationale": "性能组-郭富城(id=101) Jaccard=0.500 负载=0.333 响应=0.50 → 0.4667; 通用坐席-黎明(id=102) Jaccard=0.000 负载=1.000 响应=0.95 → 0.3900 ⇒ 选中 101"
+      }
+    },
+    {
+      "id": "as-hard-024",
+      "scenario": "skill_overcomes_heavy_load",
+      "ticket": {
+        "title": "客户端推送收不到",
+        "category": "incident",
+        "priority": "P0",
+        "requiredSkillIds": [
+          7,
+          11
+        ]
+      },
+      "employees": [
+        {
+          "id": 201,
+          "name": "客户端组-梁朝伟",
+          "active": true,
+          "currentLoad": 4,
+          "maxConcurrent": 5,
+          "recency": 0.5,
+          "skillIds": [
+            7,
+            11
+          ]
+        },
+        {
+          "id": 202,
+          "name": "空闲坐席-刘嘉玲",
+          "active": true,
+          "currentLoad": 0,
+          "maxConcurrent": 5,
+          "recency": 0.95,
+          "skillIds": [
+            8
+          ]
+        }
+      ],
+      "expect": {
+        "goldAssigneeId": 201,
+        "noMatch": false,
+        "rationale": "客户端组-梁朝伟(id=201) Jaccard=1.000 负载=0.200 响应=0.50 → 0.7400; 空闲坐席-刘嘉玲(id=202) Jaccard=0.000 负载=1.000 响应=0.95 → 0.3900 ⇒ 选中 201"
+      }
+    },
+    {
+      "id": "as-hard-025",
+      "scenario": "weak_overlap_beats_unrelated",
+      "ticket": {
+        "title": "数据库主从延迟告警",
+        "category": "request",
+        "priority": "P1",
+        "requiredSkillIds": [
+          3,
+          11
+        ]
+      },
+      "employees": [
+        {
+          "id": 401,
+          "name": "数据库组-周星驰",
+          "active": true,
+          "currentLoad": 1,
+          "maxConcurrent": 5,
+          "recency": 0.6,
+          "skillIds": [
+            3
+          ]
+        },
+        {
+          "id": 402,
+          "name": "无关坐席-吴孟达",
+          "active": true,
+          "currentLoad": 0,
+          "maxConcurrent": 5,
+          "recency": 0.9,
+          "skillIds": [
+            4
+          ]
+        }
+      ],
+      "expect": {
+        "goldAssigneeId": 401,
+        "noMatch": false,
+        "rationale": "数据库组-周星驰(id=401) Jaccard=0.500 负载=0.800 响应=0.60 → 0.5800; 无关坐席-吴孟达(id=402) Jaccard=0.000 负载=1.000 响应=0.90 → 0.3800 ⇒ 选中 401"
+      }
+    },
+    {
+      "id": "as-hard-026",
+      "scenario": "skill_overcomes_poor_recency",
+      "ticket": {
+        "title": "账号权限批量导入失败",
+        "category": "consultation",
+        "priority": "P2",
+        "requiredSkillIds": [
+          9,
+          3
+        ]
+      },
+      "employees": [
+        {
+          "id": 301,
+          "name": "权限组-成龙",
+          "active": true,
+          "currentLoad": 2,
+          "maxConcurrent": 6,
+          "recency": 0.2,
+          "skillIds": [
+            9,
+            3
+          ]
+        },
+        {
+          "id": 302,
+          "name": "新鲜坐席-洪金宝",
+          "active": true,
+          "currentLoad": 0,
+          "maxConcurrent": 6,
+          "recency": 0.95,
+          "skillIds": [
+            10
+          ]
+        }
+      ],
+      "expect": {
+        "goldAssigneeId": 301,
+        "noMatch": false,
+        "rationale": "权限组-成龙(id=301) Jaccard=1.000 负载=0.667 响应=0.20 → 0.7733; 新鲜坐席-洪金宝(id=302) Jaccard=0.000 负载=1.000 响应=0.95 → 0.3900 ⇒ 选中 301"
+      }
+    },
+    {
+      "id": "as-hard-027",
+      "scenario": "skill_overcomes_heavy_load",
+      "ticket": {
+        "title": "接口鉴权失败率上升",
+        "category": "change",
+        "priority": "P3",
+        "requiredSkillIds": [
+          2,
+          5
+        ]
+      },
+      "employees": [
+        {
+          "id": 201,
+          "name": "接口安全组-李连杰",
+          "active": true,
+          "currentLoad": 5,
+          "maxConcurrent": 6,
+          "recency": 0.5,
+          "skillIds": [
+            2,
+            5
+          ]
+        },
+        {
+          "id": 202,
+          "name": "空闲坐席-甄子丹",
+          "active": true,
+          "currentLoad": 0,
+          "maxConcurrent": 6,
+          "recency": 0.95,
+          "skillIds": [
+            6
+          ]
+        }
+      ],
+      "expect": {
+        "goldAssigneeId": 201,
+        "noMatch": false,
+        "rationale": "接口安全组-李连杰(id=201) Jaccard=1.000 负载=0.167 响应=0.50 → 0.7333; 空闲坐席-甄子丹(id=202) Jaccard=0.000 负载=1.000 响应=0.95 → 0.3900 ⇒ 选中 201"
+      }
+    },
+    {
+      "id": "as-hard-028",
+      "scenario": "specialist_beats_generalist",
+      "ticket": {
+        "title": "部署环境变量缺失导致启动失败",
+        "category": "incident",
+        "priority": "P0",
+        "requiredSkillIds": [
+          8,
+          9
+        ]
+      },
+      "employees": [
+        {
+          "id": 501,
+          "name": "部署专才-吴京",
+          "active": true,
+          "currentLoad": 3,
+          "maxConcurrent": 6,
+          "recency": 0.6,
+          "skillIds": [
+            8,
+            9
+          ]
+        },
+        {
+          "id": 502,
+          "name": "全栈通才-沈腾",
+          "active": true,
+          "currentLoad": 3,
+          "maxConcurrent": 6,
+          "recency": 0.6,
+          "skillIds": [
+            8,
+            9,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ]
+        }
+      ],
+      "expect": {
+        "goldAssigneeId": 501,
+        "noMatch": false,
+        "rationale": "部署专才-吴京(id=501) Jaccard=1.000 负载=0.500 响应=0.60 → 0.8200; 全栈通才-沈腾(id=502) Jaccard=0.222 负载=0.500 响应=0.60 → 0.3533 ⇒ 选中 501"
+      }
+    },
+    {
+      "id": "as-hard-029",
+      "scenario": "skill_dominates_idle_beginner",
+      "ticket": {
+        "title": "计费周期切换后金额翻倍",
+        "category": "request",
+        "priority": "P1",
+        "requiredSkillIds": [
+          10,
+          3
+        ]
+      },
+      "employees": [
+        {
+          "id": 101,
+          "name": "计费组-马丽",
+          "active": true,
+          "currentLoad": 2,
+          "maxConcurrent": 5,
+          "recency": 0.5,
+          "skillIds": [
+            10,
+            3
+          ]
+        },
+        {
+          "id": 102,
+          "name": "通用坐席-贾玲",
+          "active": true,
+          "currentLoad": 0,
+          "maxConcurrent": 5,
+          "recency": 0.95,
+          "skillIds": [
+            1
+          ]
+        }
+      ],
+      "expect": {
+        "goldAssigneeId": 101,
+        "noMatch": false,
+        "rationale": "计费组-马丽(id=101) Jaccard=1.000 负载=0.600 响应=0.50 → 0.8200; 通用坐席-贾玲(id=102) Jaccard=0.000 负载=1.000 响应=0.95 → 0.3900 ⇒ 选中 101"
+      }
+    },
+    {
+      "id": "as-hard-030",
+      "scenario": "weak_overlap_beats_unrelated",
+      "ticket": {
+        "title": "前端打包产物体积异常增大",
+        "category": "consultation",
+        "priority": "P2",
+        "requiredSkillIds": [
+          6,
+          4
+        ]
+      },
+      "employees": [
+        {
+          "id": 401,
+          "name": "前端组-雷军",
+          "active": true,
+          "currentLoad": 3,
+          "maxConcurrent": 6,
+          "recency": 0.55,
+          "skillIds": [
+            6
+          ]
+        },
+        {
+          "id": 402,
+          "name": "无关坐席-马云",
+          "active": true,
+          "currentLoad": 0,
+          "maxConcurrent": 6,
+          "recency": 0.9,
+          "skillIds": [
+            12
+          ]
+        }
+      ],
+      "expect": {
+        "goldAssigneeId": 401,
+        "noMatch": false,
+        "rationale": "前端组-雷军(id=401) Jaccard=0.500 负载=0.500 响应=0.55 → 0.5100; 无关坐席-马云(id=402) Jaccard=0.000 负载=1.000 响应=0.90 → 0.3800 ⇒ 选中 401"
+      }
+    }
+  ]
+}

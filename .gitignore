@@ -1,0 +1,13 @@
+# 构建产物
+/agentdesk
+/bin/
+*.test
+
+# 评测每次运行的报告是可再生产物，只保留最新一份即可；
+# 若要作为回归基线长期保存，请显式提交。
+eval/reports/*.json
+
+# 编辑器与系统
+.DS_Store
+.idea/
+.vscode/
