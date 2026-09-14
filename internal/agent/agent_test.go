@@ -276,6 +276,35 @@ func TestReadToolExecutesAndFeedsObservationBack(t *testing.T) {
 	}
 }
 
+func TestReasoningContentIsPassedBackToNextRound(t *testing.T) {
+	// 回归用例：思维链模型（DeepSeek flash 等）要求把上一轮返回的
+	// reasoning_content 原样带回，缺失时 API 直接返回 400，
+	// 「工具调用 → 回灌 → 再决策」整条链路会失败。
+	// 参考实现丢弃了该字段，因此完全无法在这些模型上运行。
+	h := newHarness(t, []*llm.Response{
+		{
+			ToolCalls:        []llm.ToolCall{{ID: "c1", Name: ToolRAGSearch, Arguments: `{"query":"接口 401"}`}},
+			ReasoningContent: "思考：先检索知识库确认原因。",
+			Usage:            llm.Usage{PromptTokens: 100, CompletionTokens: 40},
+		},
+		finalReply("请检查令牌是否过期。"),
+	})
+
+	h.runTurn(t, 1, "接口返回 401 怎么办")
+
+	// 第二轮请求里必须带着上一轮的思考过程。
+	req := h.model.lastRequest()
+	var found bool
+	for _, msg := range req.Messages {
+		if msg.Role == llm.RoleAssistant && msg.ReasoningContent == "思考：先检索知识库确认原因。" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("工具调用后的 assistant 消息必须携带 reasoning_content，否则思维链模型会拒绝请求")
+	}
+}
+
 func TestWriteToolCreatesInterruptInsteadOfWriting(t *testing.T) {
 	h := newHarness(t, []*llm.Response{
 		toolCall("call-1", ToolCreateConfirm, `{"title":"接口持续报错","description":"下单接口错误率上升","category":"incident","priority":"P0"}`),

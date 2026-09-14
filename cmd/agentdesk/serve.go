@@ -63,7 +63,12 @@ func runServe(args []string) error {
 		return err
 	}
 
-	retriever := rag.New(seed.KnowledgeChunks(), embedder, rag.DefaultOptions())
+	// 未配置向量模型时使用 BM25 检索（离线可用、无需密钥）；
+	// 配置了向量模型则用稠密向量。
+	retriever := seed.NewBM25Retriever(rag.DefaultOptions())
+	if embedder != nil {
+		retriever = rag.New(seed.KnowledgeChunks(), embedder, rag.DefaultOptions())
+	}
 
 	ag, err := agent.New(chatModel, st, retriever, tickets, agent.DefaultConfig())
 	if err != nil {
@@ -151,7 +156,7 @@ type llmConfig struct {
 // buildModel 依配置构造模型与向量化实现，并返回模式说明。
 func buildModel(offline bool, cfg llmConfig) (llm.ChatModel, rag.Embedder, string, error) {
 	if offline {
-		return &offlineModel{}, rag.NewHashEmbedder(512), "离线脚本（无真实模型调用）", nil
+		return &offlineModel{}, nil, "离线脚本（无真实模型调用）", nil
 	}
 	if cfg.apiKey == "" {
 		return nil, nil, "", errors.New(
@@ -166,13 +171,10 @@ func buildModel(offline bool, cfg llmConfig) (llm.ChatModel, rag.Embedder, strin
 		return nil, nil, "", err
 	}
 
-	// 未单独配置向量模型时退回离线向量化：检索质量会下降，
-	// 但服务仍可用，比直接启动失败更实用。启动日志会说明这一点。
+	// 未单独配置向量模型时使用 BM25 检索：离线可用、无需额外密钥，
+	// 对中文客服 FAQ 这类词面重叠场景效果好。
 	if cfg.embedAPIKey == "" || cfg.embedModel == "" {
-		fmt.Fprintf(os.Stderr,
-			"提示：未配置向量模型（-embed-api-key / -embed-model），检索将使用离线向量化，\n"+
-				"它只做字符哈希投影而非语义匹配，检索质量会明显下降。\n\n")
-		return chatModel, rag.NewHashEmbedder(512), "真实模型（检索为离线向量化）", nil
+		return chatModel, nil, "真实模型 + BM25 检索", nil
 	}
 
 	embedder, err := rag.NewOpenAIEmbedder(rag.EmbedderConfig{

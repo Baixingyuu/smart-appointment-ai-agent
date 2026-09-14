@@ -120,7 +120,28 @@ type Result struct {
 type Retriever struct {
 	chunks   []Chunk
 	embedder Embedder
-	options  Options
+	// scorer 为可选的专用打分器。
+	//
+	// 存在的原因：BM25 的打分公式与余弦相似度不同（含词频饱和与
+	// 文档长度归一化），强行套用余弦会丢掉这两项关键设计。
+	// 为空时退化为余弦相似度，适用于稠密向量。
+	scorer  Scorer
+	options Options
+}
+
+// Scorer 按查询给文档打相关性分数。
+type Scorer interface {
+	Score(query string, document string) float64
+}
+
+// NewWithScorer 构造使用专用打分器的检索器。
+//
+// 与 New 的区别：New 走「向量 + 余弦」，本函数走打分器给出的分数。
+// BM25 这类稀疏检索必须用它，否则打分逻辑会被余弦覆盖。
+func NewWithScorer(chunks []Chunk, embedder Embedder, scorer Scorer, options Options) *Retriever {
+	ret := New(chunks, embedder, options)
+	ret.scorer = scorer
+	return ret
 }
 
 // New 构造检索器。
@@ -129,6 +150,7 @@ func New(chunks []Chunk, embedder Embedder, options Options) *Retriever {
 	copy(copied, chunks)
 
 	// 预计算缺失的向量，避免每次检索重复计算。
+	// 使用专用打分器时向量不参与打分，但保留计算以支持两种模式切换。
 	if embedder != nil {
 		for i := range copied {
 			if len(copied[i].Embedding) == 0 {
@@ -153,7 +175,7 @@ func (r *Retriever) Retrieve(ctx context.Context, query string) Result {
 		result.Gate = GateResult{Reason: ReasonEmptyQuery, Message: "提问为空，无法检索"}
 		return result
 	}
-	if len(r.chunks) == 0 || r.embedder == nil {
+	if len(r.chunks) == 0 || (r.embedder == nil && r.scorer == nil) {
 		result.Gate = GateResult{Reason: ReasonNoKnowledge, Message: "未绑定任何知识库"}
 		return result
 	}
@@ -163,7 +185,7 @@ func (r *Retriever) Retrieve(ctx context.Context, query string) Result {
 	}
 
 	queryVector := r.embedder.Embed(result.Query)
-	result.Hits = r.search(queryVector)
+	result.Hits = r.search(result.Query, queryVector)
 	result.Gate = r.gate(result.Query, result.Hits)
 	if result.Gate.Sufficient {
 		result.Context = r.buildContext(result.Hits)
@@ -172,10 +194,15 @@ func (r *Retriever) Retrieve(ctx context.Context, query string) Result {
 }
 
 // search 计算相似度并返回 TopK。
-func (r *Retriever) search(queryVector []float64) []Hit {
+func (r *Retriever) search(query string, queryVector []float64) []Hit {
 	hits := make([]Hit, 0, len(r.chunks))
 	for _, chunk := range r.chunks {
-		score := cosineSimilarity(queryVector, chunk.Embedding)
+		var score float64
+		if r.scorer != nil {
+			score = r.scorer.Score(query, chunk.titleAndContent())
+		} else {
+			score = cosineSimilarity(queryVector, chunk.Embedding)
+		}
 		if score <= 0 {
 			continue
 		}
@@ -218,7 +245,7 @@ func (r *Retriever) gate(query string, hits []Hit) GateResult {
 		}
 	}
 
-	coverage := keywordCoverage(query, hits)
+	coverage := r.coverage(query, hits)
 	// 覆盖率低于地板值即视为「无实质交集」。
 	//
 	// 为什么不能只判 coverage == 0：中文里「流程」「材料」「问题」这类泛词
@@ -300,6 +327,28 @@ func (r *Retriever) buildContext(hits []Hit) string {
 			i+1, hit.Chunk.DocID, hit.Chunk.Title, hit.Score, strings.TrimSpace(hit.Chunk.Content))
 	}
 	return strings.TrimSpace(b.String())
+}
+
+// CoverageReporter 可选能力：按词项区分度返回覆盖率。
+//
+// 稀疏检索器（BM25）实现该接口，使覆盖率不把「鉴权」与「什么」同等看待。
+type CoverageReporter interface {
+	WeightedCoverage(query string, documents []string) (float64, []string)
+}
+
+// coverage 计算提问被命中片段覆盖的程度。
+//
+// 优先使用检索器提供的 IDF 加权覆盖率；不支持时退回朴素词面覆盖率。
+func (r *Retriever) coverage(query string, hits []Hit) float64 {
+	if reporter, ok := r.scorer.(CoverageReporter); ok {
+		documents := make([]string, 0, len(hits))
+		for _, hit := range hits {
+			documents = append(documents, hit.Chunk.titleAndContent())
+		}
+		coverage, _ := reporter.WeightedCoverage(query, documents)
+		return coverage
+	}
+	return keywordCoverage(query, hits)
 }
 
 // keywordCoverage 计算提问关键词被命中片段覆盖的比例。

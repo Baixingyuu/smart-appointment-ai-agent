@@ -46,10 +46,14 @@ type Config struct {
 }
 
 // DefaultConfig 返回默认运行配置。
+//
+// MaxToolRounds 取 5：真实模型完成「检索 → 查重 → 起草 → 确认」
+// 需要 4 轮决策，取 3 会在最后一步前被打断（实测）。
+// 留一轮余量给模型纠错（例如首次检索不理想时换措辞重试）。
 func DefaultConfig() Config {
 	return Config{
 		Policy:        tooling.DefaultPolicy(),
-		MaxToolRounds: 3,
+		MaxToolRounds: 5,
 		ConfirmTTL:    2 * time.Hour,
 	}
 }
@@ -157,6 +161,18 @@ type ToolCallRecord struct {
 	DurationUS int
 }
 
+// RoundRecord 一轮模型决策的用量与工具归因。
+//
+// 按轮记录而非只记总数：真实模型单轮 prompt 可达数千 token
+// （工具目录 + 证据 + 历史），只有分清钱花在哪一轮才谈得上优化。
+type RoundRecord struct {
+	Round            int
+	PromptTokens     int
+	CompletionTokens int
+	Tools            []string
+	DurationUS       int
+}
+
 // TurnResult 一次会话回合的结果。
 type TurnResult struct {
 	Reply string
@@ -171,6 +187,8 @@ type TurnResult struct {
 	ToolCalls []ToolCallRecord
 	RAGResult *rag.Result
 	Rounds    int
+	// RoundRecords 保存逐轮明细，供成本归因。
+	RoundRecords []RoundRecord
 	// DurationMS 为整轮耗时（毫秒）。
 	DurationMS int
 	// DurationUS 为整轮耗时（微秒）。
@@ -220,6 +238,12 @@ func (a *Agent) Run(ctx context.Context, input TurnInput) (*TurnResult, error) {
 		result.Usage.PromptTokens += response.Usage.PromptTokens
 		result.Usage.CompletionTokens += response.Usage.CompletionTokens
 
+		roundRecord := RoundRecord{
+			Round:            round + 1,
+			PromptTokens:     response.Usage.PromptTokens,
+			CompletionTokens: response.Usage.CompletionTokens,
+		}
+
 		// 没有工具调用即为最终回复，本轮结束。
 		if len(response.ToolCalls) == 0 {
 			result.Reply = response.Content
@@ -229,16 +253,24 @@ func (a *Agent) Run(ctx context.Context, input TurnInput) (*TurnResult, error) {
 		}
 
 		// 回灌 assistant 的工具调用意图，再逐条追加工具结果。
+		//
+		// ReasoningContent 必须一并带回：思维链模型（如 DeepSeek flash）
+		// 会在下一轮校验该字段，缺失时直接返回 400，整轮失败。
 		messages = append(messages, llm.Message{
-			Role: llm.RoleAssistant, Content: response.Content, ToolCalls: response.ToolCalls,
+			Role:             llm.RoleAssistant,
+			Content:          response.Content,
+			ToolCalls:        response.ToolCalls,
+			ReasoningContent: response.ReasoningContent,
 		})
 
 		for _, call := range response.ToolCalls {
 			record, observation, interrupt := a.executeTool(ctx, input, call, counts, total)
 			result.ToolCalls = append(result.ToolCalls, record)
+			roundRecord.Tools = append(roundRecord.Tools, record.Code)
 
 			if interrupt != nil {
 				// 写操作需要确认：发起中断并短路返回，等用户下一条消息。
+				result.RoundRecords = append(result.RoundRecords, roundRecord)
 				result.Interrupted = true
 				result.CheckPointID = interrupt.CheckPointID
 				result.Prompt = interrupt.Prompt
@@ -259,6 +291,7 @@ func (a *Agent) Run(ctx context.Context, input TurnInput) (*TurnResult, error) {
 				Role: llm.RoleTool, Content: observation, ToolCallID: call.ID,
 			})
 		}
+		result.RoundRecords = append(result.RoundRecords, roundRecord)
 	}
 
 	// 轮次用尽仍无最终回复：明确告知而非静默截断，
@@ -627,6 +660,10 @@ const defaultSystemPrompt = `你是一名企业技术支持客服助手。你的
 4. 创建工单时先调用 ticket_create_draft 整理字段是否齐备；信息不足时向用户追问，
    但不要因为缺少次要信息就拒绝创建——把缺失项填进 missingInfo 即可。
 5. 调用 ticket_create_confirm 只会向用户发起确认，不会立即创建。用户确认后才会建单。
+   重要：如果已经调用 ticket_create_draft 整理好草稿，并且确认需要建单，
+   必须紧接着调用 ticket_create_confirm 发起确认。不要只把草稿内容写在回复文本里
+   就结束——那样用户会以为工单已经提交，实际并没有创建。
+   缺少 description 等次要信息时不要反复追问，把缺失项填进 missingInfo 即可建单。
 6. 工具不可用时不要假装成功。若工具返回被拒绝或失败，如实告知用户。
 
 回复要求：简洁、专业、直接给出可执行的下一步。不要暴露内部工具名与实现细节。`

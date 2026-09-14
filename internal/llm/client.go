@@ -11,6 +11,7 @@ package llm
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -49,6 +50,14 @@ type Message struct {
 	ToolCalls []ToolCall
 	// ToolCallID 仅在 tool 消息上出现，指向被回应的调用。
 	ToolCallID string
+	// ReasoningContent 是思维链模型的思考过程。
+	//
+	// 必须原样回传：DeepSeek 的 thinking 模型会在下一轮请求中校验该字段，
+	// 缺失时直接返回 400 invalid_request_error
+	// （"The `reasoning_content` in the thinking mode must be passed back to the API."）。
+	// 因此「工具调用 → 结果回灌 → 再决策」这条链路在思维链模型上
+	// 依赖该字段，丢一次就整轮失败。
+	ReasoningContent string
 }
 
 // 消息角色常量。
@@ -92,6 +101,8 @@ type Response struct {
 	ToolCalls []ToolCall
 	Usage     Usage
 	Model     string
+	// ReasoningContent 由思维链模型返回的思考过程，需在后续请求中回传。
+	ReasoningContent string
 }
 
 // ChatModel 定义模型能力。
@@ -186,7 +197,8 @@ func (m *OpenAIModel) ChatWithTools(ctx context.Context, req ToolRequest) (*Resp
 			PromptTokens:     int(completion.Usage.PromptTokens),
 			CompletionTokens: int(completion.Usage.CompletionTokens),
 		},
-		Model: m.config.Model,
+		Model:            m.config.Model,
+		ReasoningContent: extractReasoningContent(completion.RawJSON()),
 	}
 	for _, call := range message.ToolCalls {
 		function := call.AsFunction()
@@ -242,6 +254,13 @@ func (m *OpenAIModel) buildMessages(system string, messages []Message, withTools
 		switch msg.Role {
 		case RoleAssistant:
 			assistant := openai.AssistantMessage(msg.Content)
+			// 思维链模型要求把上一轮的 reasoning_content 原样带回，
+			// 否则整个请求被拒。SDK 未建模该字段，用 extra fields 透传。
+			if msg.ReasoningContent != "" {
+				assistant.OfAssistant.SetExtraFields(map[string]any{
+					"reasoning_content": msg.ReasoningContent,
+				})
+			}
 			if withTools && len(msg.ToolCalls) > 0 {
 				calls := make([]openai.ChatCompletionMessageToolCallUnionParam, 0, len(msg.ToolCalls))
 				for _, call := range msg.ToolCalls {
@@ -267,4 +286,30 @@ func (m *OpenAIModel) buildMessages(system string, messages []Message, withTools
 		}
 	}
 	return ret
+}
+
+// extractReasoningContent 从原始响应 JSON 中提取 reasoning_content。
+//
+// 为什么要读原始 JSON：该字段是 DeepSeek 等思维链模型的扩展，
+// 官方 SDK 未为其建模，结构化字段里取不到。
+// 解析失败不影响主流程——最坏情况是下一轮因缺少该字段被拒，
+// 而那会以明确的 API 错误暴露出来，比在解析处静默失败更容易定位。
+func extractReasoningContent(rawJSON string) string {
+	if strings.TrimSpace(rawJSON) == "" {
+		return ""
+	}
+	var envelope struct {
+		Choices []struct {
+			Message struct {
+				ReasoningContent string `json:"reasoning_content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	if err := json.Unmarshal([]byte(rawJSON), &envelope); err != nil {
+		return ""
+	}
+	if len(envelope.Choices) == 0 {
+		return ""
+	}
+	return envelope.Choices[0].Message.ReasoningContent
 }

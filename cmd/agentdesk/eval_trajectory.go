@@ -113,7 +113,7 @@ func executeCase(item eval.TrajectoryCase, sabotage string) ([]eval.TurnObservat
 		return nil, err
 	}
 	tickets := ticket.New(st, assign.New(assign.DefaultWeights()))
-	retriever := rag.New(seed.KnowledgeChunks(), rag.NewHashEmbedder(512), rag.DefaultOptions())
+	retriever := seed.NewBM25Retriever(rag.DefaultOptions())
 
 	// 不注入固定时钟：延迟是评测的四个轴之一，
 	// 固定时钟会让 DurationMS 恒为 0，指标直接失真。

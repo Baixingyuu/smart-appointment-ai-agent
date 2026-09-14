@@ -95,6 +95,25 @@ func Employees() []domain.Employee {
 	}
 }
 
+// NewBM25Retriever 用知识库语料构造 BM25 检索器。
+//
+// 为什么离线默认用 BM25 而不是「字符哈希向量化」：后者只是把 bigram
+// 随机投影到固定维度，没有检索语义，实测导致模型不信任检索结果并反复
+// 改写查询重试。BM25 是正经的检索算法，对中文客服 FAQ 这类词面重叠
+// 场景效果好、打分可解释、且不需要任何外部服务。
+//
+// 生产环境若要用模型向量化，替换为 rag.NewOpenAIEmbedder 即可，
+// 检索、门控与工具层都不受影响。
+func NewBM25Retriever(options rag.Options) *rag.Retriever {
+	chunks := KnowledgeChunks()
+	documents := make([]string, 0, len(chunks))
+	for _, chunk := range chunks {
+		documents = append(documents, chunk.Title+" "+chunk.Content)
+	}
+	bm25 := rag.NewBM25Embedder(documents)
+	return rag.NewWithScorer(chunks, bm25, bm25, options)
+}
+
 // Load 把种子数据写入存储。
 func Load(st store.Store) error {
 	for _, skill := range Skills() {

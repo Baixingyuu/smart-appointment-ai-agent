@@ -139,14 +139,24 @@ type Policy struct {
 
 // DefaultPolicy 返回默认策略。
 //
-// 取值的取舍：预算过松会让模型陷入反复调用（既慢又贵），
-// 过紧则会打断正常的"检索→查重→起草→确认"四步链路。
-// 3 次调用恰好覆盖一次完整建单流程，留一次余量给纠错。
+// 取值依据来自真实模型实测，而非拍脑袋：
+//
+//	真实模型（DeepSeek flash）在单轮内会**并行发起 2-3 个工具调用**
+//	（例如同时用不同措辞检索两次）。早期把 MaxTotalCalls 设为 4、
+//	MaxCallsPerTool 设为 2，导致「检索→查重→起草→确认」这条正常链路
+//	在第三轮就被预算打断，回复降级为「步骤过多，已转人工」。
+//
+// 因此预算按「够完成一次完整建单链路并留纠错余量」来定：
+// 检索×2 + 查重 + 起草 + 确认 = 5 次，留一倍余量得 10 次。
+//
+// 注意：这些上限是**安全阀**而非主要约束。真正控制成本与步数的是
+// agent 的 MaxToolRounds（决策轮次）——并行调用共享同一轮，
+// 因此按轮次限制比按单次调用限制更贴合真实模型的行为。
 func DefaultPolicy() Policy {
 	return Policy{
-		MaxTotalCalls:    4,
+		MaxTotalCalls:    10,
 		MaxArgumentBytes: 8 * 1024,
-		MaxCallsPerTool:  2,
+		MaxCallsPerTool:  4,
 	}
 }
 
