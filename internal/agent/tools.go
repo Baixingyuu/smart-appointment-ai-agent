@@ -6,21 +6,24 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mac/agentdesk/internal/domain"
 	"github.com/mac/agentdesk/internal/tooling"
 )
 
 // buildDefinitions 构造四个模型侧工具。
 //
-// 只给模型这四个工具，是刻意的边界：
+// 只给模型这三个工具，是刻意的边界：
 //   - 信息收集靠对话追问，不做成工具（模型自己就会问）
 //   - 派单、优先级计算是确定性业务规则，留在后端，绝不交给模型
 //     （否则「指派准确率」这个指标将无法归因）
+//
+// 曾有一个 ticket_create_draft（整理草稿），已移除：它的 5 个参数中
+// 有 4 个与 ticket_create_confirm 完全相同，属于设计冗余，
+// 而它提供的"提前校验字段"价值有限——确认提示里本就会列出缺失信息。
+// 移除后工具 schema 开销显著下降，建单链路也少一步。
 func (a *Agent) buildDefinitions() []tooling.Definition {
 	return []tooling.Definition{
 		a.ragSearchTool(),
 		a.findOpenTicketTool(),
-		a.createDraftTool(),
 		a.createConfirmTool(),
 	}
 }
@@ -124,74 +127,6 @@ func (a *Agent) findOpenTicketTool() tooling.Definition {
 				"message": pickMessage(len(briefs) > 0,
 					"该会话已有未关闭工单，请勿重复创建",
 					"未发现未关闭的同类工单，可以创建"),
-			})
-		},
-	}
-}
-
-func (a *Agent) createDraftTool() tooling.Definition {
-	return tooling.Definition{
-		Code: ToolCreateDraft,
-		Description: "整理工单字段草稿并检查信息是否齐备。此工具只做校验与整理，不会创建工单。" +
-			"缺少次要信息时不要拒绝创建，把缺失项填进 missingInfo 即可。",
-		Risk:     tooling.RiskRead,
-		Required: []string{"title"},
-		Parameters: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"title":       map[string]any{"type": "string", "description": "工单标题，简明概括问题，不超过 40 字"},
-				"description": map[string]any{"type": "string", "description": "问题现象、影响范围、已尝试的操作"},
-				"category": map[string]any{
-					"type":        "string",
-					"enum":        []string{"incident", "consultation", "request", "change"},
-					"description": "工单类型：incident 故障 / consultation 咨询 / request 服务请求 / change 变更",
-				},
-				"priority": map[string]any{
-					"type":        "string",
-					"enum":        []string{"P0", "P1", "P2", "P3"},
-					"description": "优先级：P0 系统瘫痪或核心业务中断 / P1 核心功能不可用 / P2 部分异常 / P3 一般问题",
-				},
-				"missingInfo": map[string]any{
-					"type":        "array",
-					"items":       map[string]any{"type": "string"},
-					"description": "尚缺的关键信息字段名，例如 复现步骤、影响范围",
-				},
-			},
-			"required":             []string{"title"},
-			"additionalProperties": false,
-		},
-		Handler: func(_ tooling.HandlerContext, args map[string]any) (string, error) {
-			title := tooling.StringArg(args, "title")
-			description := tooling.StringArg(args, "description")
-			category := tooling.StringArg(args, "category")
-			priority := tooling.StringArg(args, "priority")
-			missing := tooling.StringSliceArg(args, "missingInfo")
-
-			// 服务端自行判断必要字段，不采信模型自称"信息已完整"：
-			// 描述为空是实质缺失，必须显式记录，否则处理人要重新问一遍。
-			if description == "" && !containsString(missing, "description") {
-				missing = append(missing, "description")
-			}
-
-			issues := make([]string, 0, 2)
-			if !domain.Category(category).Valid() {
-				issues = append(issues, fmt.Sprintf("类型 %q 不合法，将按 incident 处理", category))
-			}
-			if !domain.Priority(priority).Valid() {
-				issues = append(issues, fmt.Sprintf("优先级 %q 不合法，将按 P3 处理", priority))
-			}
-
-			return marshalJSON(map[string]any{
-				"ready":       len(missing) == 0,
-				"title":       title,
-				"description": description,
-				"category":    category,
-				"priority":    priority,
-				"missingInfo": missing,
-				"issues":      issues,
-				"message": pickMessage(len(missing) == 0,
-					"字段齐备，可发起创建确认",
-					"字段不齐备，可先向用户追问，或直接创建并在 missingInfo 中标注"),
 			})
 		},
 	}

@@ -344,6 +344,32 @@ make eval-trajectory ARGS="-sabotage=always_write"
 
 ---
 
+## 8.5 成本指标与优化验证
+
+成本既是评测的一轴，也是被优化的对象。固定开销用测试锁进预算，
+避免后续新增工具或改提示词时悄悄推高：
+
+```
+TestFixedPromptOverheadBudget   固定开销 ≤ 900 token
+TestToolCountIsMinimal          工具数 ≤ 3
+```
+
+两个上界都由实测确定，不是拍脑袋：优化前固定开销 1,111 token、4 个工具，
+测试**正确地失败**并暴露了 `ticket_create_draft` 与 `ticket_create_confirm`
+的参数重叠（5 个参数中 4 个相同）。
+
+| 项 | 优化前 | 优化后 |
+|---|---|---|
+| 系统提示词 | 380 | 332 token |
+| 工具 schema | 731（4 工具） | **434（3 工具）** |
+| 固定开销 | 1,111 | **766（−31%）** |
+
+真实模型端到端（4 场景）：prompt token 合计 17,591 → **13,034（−26%）**，
+建单链路从 5 步降到 4 步。
+
+**方法论价值**：先有逐轮成本归因（第 4.3 节），才能定位固定开销是大头、
+并验证优化是否真的生效。没有度量的优化只能靠感觉。
+
 ## 9. 指标与失败模式的对应表
 
 排查问题时按下表定位，这是本文档最实用的部分。
@@ -354,6 +380,8 @@ make eval-trajectory ARGS="-sabotage=always_write"
 | 知识库能答的问题却建了单 | `SafetyViolationRate` 升高 | 置信门槛过低，或提示词未强调「先检索」 |
 | 出现重复工单 | `OrderAccuracy` 下降 | 模型跳过查重直接建单 |
 | 成本突然翻倍 | 逐轮 `RoundRecords` 中某轮 token 异常 | 反复检索/反复改写，检索质量退化 |
+| 首轮成本就偏高 | `TestFixedPromptOverheadBudget` | 新增了工具或提示词膨胀 |
+| 用户为一个必然失败的操作做确认 | 检查参数校验与确认的先后顺序 | 参数校验被放到了确认之后 |
 | 延迟升高但 token 正常 | `Latency.P95` vs `AvgTools` | 单次工具执行变慢（外部依赖） |
 | 回复变成「步骤过多」 | `BudgetRejectRate` 升高 | 预算过紧，或模型陷入循环 |
 | 声称做了实际没做 | `ToolAccuracy` 正常但 `PassRate` 低 | 模型在回复文本里假装调用了工具 |

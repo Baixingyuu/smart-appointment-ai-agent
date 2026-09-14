@@ -26,7 +26,6 @@ import (
 const (
 	ToolRAGSearch      = "rag_search"
 	ToolFindOpenTicket = "ticket_find_open_by_topic"
-	ToolCreateDraft    = "ticket_create_draft"
 	ToolCreateConfirm  = "ticket_create_confirm"
 )
 
@@ -383,6 +382,11 @@ func (a *Agent) executeTool(ctx context.Context, input TurnInput, call llm.ToolC
 	}
 	record.Risk = def.Risk
 
+	// 参数校验必须先于确认中断。
+	//
+	// 早期实现在写操作分支里才解析参数，导致空标题这类非法参数
+	// 会先向用户发起确认，用户同意后才在建单时失败——用户白确认一次，
+	// 且若校验更宽松就会建出字段缺失的脏数据。
 	args, err := tooling.ParseArguments(def, call.Arguments)
 	if err != nil {
 		record.ErrorKind = tooling.KindOf(err)
@@ -701,13 +705,11 @@ const defaultSystemPrompt = `你是一名企业技术支持客服助手。你的
    - reason 为 low_coverage 或 low_score 时，可以先尝试换一种说法再检索一次。
 3. 决定创建工单前，先用 ticket_find_open_by_topic 检查是否已有未关闭的同类工单，
    避免重复创建。若已存在，应告知用户已有工单在处理中。
-4. 创建工单时先调用 ticket_create_draft 整理字段是否齐备；信息不足时向用户追问，
-   但不要因为缺少次要信息就拒绝创建——把缺失项填进 missingInfo 即可。
+4. 决定建单时直接调用 ticket_create_confirm。信息不足时向用户追问关键项，
+   但不要因为缺少次要信息就拒绝创建——把缺失项填进 missingInfo，确认提示会一并展示给用户。
 5. 调用 ticket_create_confirm 只会向用户发起确认，不会立即创建。用户确认后才会建单。
-   重要：如果已经调用 ticket_create_draft 整理好草稿，并且确认需要建单，
-   必须紧接着调用 ticket_create_confirm 发起确认。不要只把草稿内容写在回复文本里
+   重要：确认需要建单时必须调用 ticket_create_confirm，不要只把工单内容写在回复文本里
    就结束——那样用户会以为工单已经提交，实际并没有创建。
-   缺少 description 等次要信息时不要反复追问，把缺失项填进 missingInfo 即可建单。
 6. 工具不可用时不要假装成功。若工具返回被拒绝或失败，如实告知用户。
 
 回复要求：简洁、专业、直接给出可执行的下一步。不要暴露内部工具名与实现细节。`

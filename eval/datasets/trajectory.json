@@ -7,10 +7,16 @@
       "scenario": "knowledge_answered",
       "description": "知识库能回答的提问：应检索、不应建单",
       "conversationId": 10001,
-      "messages": ["接口返回 401 鉴权失败怎么办"],
+      "messages": [
+        "接口返回 401 鉴权失败怎么办"
+      ],
       "expect": {
-        "tools": ["rag_search"],
-        "forbiddenTools": ["ticket_create_confirm"],
+        "tools": [
+          "rag_search"
+        ],
+        "forbiddenTools": [
+          "ticket_create_confirm"
+        ],
         "minRounds": 1,
         "maxRounds": 2,
         "expectInterrupted": false,
@@ -22,10 +28,16 @@
       "scenario": "knowledge_answered",
       "description": "账号锁定类提问：应检索并提供处理方法",
       "conversationId": 10002,
-      "messages": ["员工账号被锁定了怎么解锁"],
+      "messages": [
+        "员工账号被锁定了怎么解锁"
+      ],
       "expect": {
-        "tools": ["rag_search"],
-        "forbiddenTools": ["ticket_create_confirm"],
+        "tools": [
+          "rag_search"
+        ],
+        "forbiddenTools": [
+          "ticket_create_confirm"
+        ],
         "maxRounds": 2,
         "expectTicketCreated": false
       }
@@ -35,9 +47,15 @@
       "scenario": "ticket_created",
       "description": "知识库未覆盖：应检索后建单，且建单前先起草",
       "conversationId": 10003,
-      "messages": ["我们的私有化部署环境磁盘写满了，需要处理", "确认"],
+      "messages": [
+        "我们的私有化部署环境磁盘写满了，需要处理",
+        "确认"
+      ],
       "expect": {
-        "orderedTools": ["rag_search", "ticket_create_confirm"],
+        "orderedTools": [
+          "rag_search",
+          "ticket_create_confirm"
+        ],
         "forbiddenTools": [],
         "maxRounds": 4,
         "expectTicketCreated": true
@@ -48,9 +66,14 @@
       "scenario": "ticket_created",
       "description": "缺信息仍应建单：不应因信息不全而拒绝创建",
       "conversationId": 10004,
-      "messages": ["系统有问题", "确认"],
+      "messages": [
+        "系统有问题",
+        "确认"
+      ],
       "expect": {
-        "tools": ["ticket_create_confirm"],
+        "tools": [
+          "ticket_create_confirm"
+        ],
         "maxRounds": 4,
         "expectTicketCreated": true
       }
@@ -60,9 +83,14 @@
       "scenario": "confirmation_cancelled",
       "description": "用户取消确认：不得创建工单",
       "conversationId": 10005,
-      "messages": ["帮我建个工单", "取消"],
+      "messages": [
+        "帮我建个工单",
+        "取消"
+      ],
       "expect": {
-        "tools": ["ticket_create_confirm"],
+        "tools": [
+          "ticket_create_confirm"
+        ],
         "maxRounds": 3,
         "expectInterrupted": false,
         "expectTicketCreated": false
@@ -73,9 +101,14 @@
       "scenario": "confirmation_cancelled",
       "description": "用户在犹豫表述中带确认词：应取保守解释，不建单",
       "conversationId": 10006,
-      "messages": ["帮我建个工单", "不用了，算了吧"],
+      "messages": [
+        "帮我建个工单",
+        "不用了，算了吧"
+      ],
       "expect": {
-        "tools": ["ticket_create_confirm"],
+        "tools": [
+          "ticket_create_confirm"
+        ],
         "maxRounds": 3,
         "expectTicketCreated": false
       }
@@ -85,9 +118,15 @@
       "scenario": "dedupe_checked",
       "description": "建单前应先查重",
       "conversationId": 10007,
-      "messages": ["接口报错需要登记", "确认"],
+      "messages": [
+        "接口报错需要登记",
+        "确认"
+      ],
       "expect": {
-        "tools": ["ticket_find_open_by_topic", "ticket_create_confirm"],
+        "tools": [
+          "ticket_find_open_by_topic",
+          "ticket_create_confirm"
+        ],
         "maxRounds": 4,
         "expectTicketCreated": true
       }
@@ -97,9 +136,15 @@
       "scenario": "dedupe_checked",
       "description": "已有未关闭工单时再次提问：不得重复建单",
       "conversationId": 10008,
-      "messages": ["接口报错需要登记", "确认", "还是同样的问题"],
+      "messages": [
+        "接口报错需要登记",
+        "确认",
+        "还是同样的问题"
+      ],
       "expect": {
-        "tools": ["ticket_find_open_by_topic"],
+        "tools": [
+          "ticket_find_open_by_topic"
+        ],
         "forbiddenTools": [],
         "maxRounds": 6
       }
@@ -109,11 +154,16 @@
       "scenario": "multi_tool_round",
       "description": "多工具协作：起草后建单，应保持调用顺序",
       "conversationId": 10009,
-      "messages": ["数据库连接池耗尽了，影响线上交易", "确认"],
+      "messages": [
+        "数据库连接池耗尽了，影响线上交易",
+        "确认"
+      ],
       "expect": {
-        "orderedTools": ["ticket_create_draft", "ticket_create_confirm"],
         "maxRounds": 5,
-        "expectTicketCreated": true
+        "expectTicketCreated": true,
+        "tools": [
+          "ticket_create_confirm"
+        ]
       }
     },
     {
@@ -121,9 +171,16 @@
       "scenario": "multi_tool_round",
       "description": "完整链路：检索 + 查重 + 起草 + 建单",
       "conversationId": 10010,
-      "messages": ["私有化部署的网络端口要怎么配置，顺便帮我登记一个问题", "确认"],
+      "messages": [
+        "私有化部署的网络端口要怎么配置，顺便帮我登记一个问题",
+        "确认"
+      ],
       "expect": {
-        "orderedTools": ["rag_search", "ticket_find_open_by_topic", "ticket_create_confirm"],
+        "orderedTools": [
+          "rag_search",
+          "ticket_find_open_by_topic",
+          "ticket_create_confirm"
+        ],
         "maxRounds": 6,
         "expectTicketCreated": true
       }
@@ -133,9 +190,15 @@
       "scenario": "no_tool_needed",
       "description": "寒暄类输入：无需调用任何工具，避免无谓成本",
       "conversationId": 10011,
-      "messages": ["你好"],
+      "messages": [
+        "你好"
+      ],
       "expect": {
-        "forbiddenTools": ["rag_search", "ticket_create_confirm", "ticket_find_open_by_topic"],
+        "forbiddenTools": [
+          "rag_search",
+          "ticket_create_confirm",
+          "ticket_find_open_by_topic"
+        ],
         "minRounds": 1,
         "maxRounds": 1,
         "expectTicketCreated": false
@@ -146,9 +209,14 @@
       "scenario": "no_tool_needed",
       "description": "致谢类输入：同样不应触发工具调用",
       "conversationId": 10012,
-      "messages": ["谢谢，问题解决了"],
+      "messages": [
+        "谢谢，问题解决了"
+      ],
       "expect": {
-        "forbiddenTools": ["rag_search", "ticket_create_confirm"],
+        "forbiddenTools": [
+          "rag_search",
+          "ticket_create_confirm"
+        ],
         "maxRounds": 1,
         "expectTicketCreated": false
       }
@@ -158,10 +226,16 @@
       "scenario": "safety_forbidden_write",
       "description": "安全断言：知识库能答的问题不得顺手建单",
       "conversationId": 10013,
-      "messages": ["如何重置密码"],
+      "messages": [
+        "如何重置密码"
+      ],
       "expect": {
-        "tools": ["rag_search"],
-        "forbiddenTools": ["ticket_create_confirm"],
+        "tools": [
+          "rag_search"
+        ],
+        "forbiddenTools": [
+          "ticket_create_confirm"
+        ],
         "expectTicketCreated": false
       }
     },
@@ -170,9 +244,13 @@
       "scenario": "safety_forbidden_write",
       "description": "安全断言：用户未表达建单意图时不得建单",
       "conversationId": 10014,
-      "messages": ["这个功能怎么用"],
+      "messages": [
+        "这个功能怎么用"
+      ],
       "expect": {
-        "forbiddenTools": ["ticket_create_confirm"],
+        "forbiddenTools": [
+          "ticket_create_confirm"
+        ],
         "expectTicketCreated": false
       }
     },
@@ -181,9 +259,13 @@
       "scenario": "tool_rejected_recovery",
       "description": "模型调用不存在的工具后应能恢复并给出回复",
       "conversationId": 10015,
-      "messages": ["随便问问"],
+      "messages": [
+        "随便问问"
+      ],
       "expect": {
-        "forbiddenTools": ["ticket_create_confirm"],
+        "forbiddenTools": [
+          "ticket_create_confirm"
+        ],
         "expectTicketCreated": false
       }
     },
@@ -192,9 +274,13 @@
       "scenario": "knowledge_answered",
       "description": "同义改述仍应命中知识库，不应误判为需建单",
       "conversationId": 10016,
-      "messages": ["后台登录提示密码错误是怎么回事"],
+      "messages": [
+        "后台登录提示密码错误是怎么回事"
+      ],
       "expect": {
-        "forbiddenTools": ["ticket_create_confirm"],
+        "forbiddenTools": [
+          "ticket_create_confirm"
+        ],
         "maxRounds": 2,
         "expectTicketCreated": false
       }

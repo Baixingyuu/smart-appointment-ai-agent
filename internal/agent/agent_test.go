@@ -231,8 +231,8 @@ func TestToolSchemasAreExposedWithRealParameters(t *testing.T) {
 	h.runTurn(t, 1, "接口报错")
 
 	req := h.model.lastRequest()
-	if len(req.Tools) != 4 {
-		t.Fatalf("应对模型开放 4 个工具，实际 %d", len(req.Tools))
+	if len(req.Tools) != 3 {
+		t.Fatalf("应对模型开放 3 个工具，实际 %d", len(req.Tools))
 	}
 	// 参数必须是真实 schema。参考实现把参数写成泛型对象，
 	// 模型看不到参数含义只能靠猜，工具调用准确率因此无法提升。
@@ -564,7 +564,7 @@ func TestUnknownToolIsRejectedNotPanicked(t *testing.T) {
 
 func TestInvalidArgumentsAreRejectedBeforeHandler(t *testing.T) {
 	h := newHarness(t, []*llm.Response{
-		toolCall("c1", ToolCreateDraft, `{"title":""}`),
+		toolCall("c1", ToolCreateConfirm, `{"title":""}`),
 		finalReply("请提供问题标题。"),
 	})
 
@@ -662,19 +662,60 @@ func TestFindOpenTicketToolReportsExistingTicket(t *testing.T) {
 	}
 }
 
-func TestCreateDraftMarksMissingDescription(t *testing.T) {
+func TestConfirmRejectsEmptyRequiredField(t *testing.T) {
+	// 回归用例：参数校验必须先于确认中断。
+	//
+	// 早期实现在写操作分支里才解析参数，空标题会先向用户发起确认，
+	// 用户同意后才在建单时失败——用户白确认一次，还可能建出脏数据。
 	h := newHarness(t, []*llm.Response{
-		toolCall("c1", ToolCreateDraft, `{"title":"只有标题"}`),
-		finalReply("请补充问题描述。"),
+		toolCall("c1", ToolCreateConfirm, `{"title":""}`),
+		finalReply("请提供问题标题。"),
 	})
 
 	result := h.runTurn(t, 1400, "建单")
 	if len(result.ToolCalls) != 1 {
 		t.Fatalf("期望 1 次调用，实际 %d", len(result.ToolCalls))
 	}
-	// 服务端自行判定必要字段，不采信模型自称完整。
-	if !containsAny(result.ToolCalls[0].Result, "description") {
-		t.Errorf("草案工具应自行识别缺失的描述字段，实际：%s", result.ToolCalls[0].Result)
+	if result.ToolCalls[0].ErrorKind != tooling.KindInvalidArgs {
+		t.Errorf("空标题应归因为 invalid_args，实际 %s", result.ToolCalls[0].ErrorKind)
+	}
+	if result.Interrupted {
+		t.Error("参数非法时不应发起确认——用户不应为一个必然失败的操作做确认")
+	}
+	if _, pending := h.store.FindPendingInterrupt(1400); pending {
+		t.Error("参数非法时不应留下待确认中断")
+	}
+}
+
+func TestPartialInfoStillAllowsTicketCreation(t *testing.T) {
+	// 移除 ticket_create_draft 后必须保住的行为：信息不全不阻塞建单。
+	//
+	// 仅有标题、没有描述时仍应发起确认——真实客服场景中用户常无法一次说清，
+	// 卡住不建单会让问题丢失。缺失项通过 missingInfo 展示给用户。
+	h := newHarness(t, []*llm.Response{
+		toolCall("c1", ToolCreateConfirm,
+			`{"title":"只有标题的问题","missingInfo":["description","复现步骤"]}`),
+	})
+
+	result := h.runTurn(t, 1500, "帮我建个工单")
+
+	if !result.Interrupted {
+		t.Fatal("信息不全但标题有效时应仍能发起确认")
+	}
+	if result.TicketID != 0 {
+		t.Error("确认前不应创建工单")
+	}
+
+	pending, ok := h.store.FindPendingInterrupt(1500)
+	if !ok {
+		t.Fatal("应落库待确认中断")
+	}
+	if len(pending.Payload.MissingInfo) != 2 {
+		t.Errorf("缺失信息应被带入建单载荷，实际 %v", pending.Payload.MissingInfo)
+	}
+	// 缺失项必须展示给用户，否则用户不知道还要补充什么。
+	if !containsAny(result.Prompt, "description") {
+		t.Errorf("确认提示应列出缺失信息，实际：%s", result.Prompt)
 	}
 }
 
