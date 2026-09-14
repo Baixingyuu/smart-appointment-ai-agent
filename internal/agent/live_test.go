@@ -8,6 +8,7 @@ import (
 
 	"github.com/mac/agentdesk/internal/agent"
 	"github.com/mac/agentdesk/internal/assign"
+	"github.com/mac/agentdesk/internal/classify"
 	"github.com/mac/agentdesk/internal/llm"
 	"github.com/mac/agentdesk/internal/rag"
 	"github.com/mac/agentdesk/internal/seed"
@@ -49,7 +50,8 @@ func TestLiveAgentAgainstDeepSeek(t *testing.T) {
 	tickets := ticket.New(st, assign.New(assign.DefaultWeights()))
 	retriever := seed.NewBM25Retriever(rag.DefaultOptions())
 
-	ag, err := agent.New(model, st, retriever, tickets, agent.DefaultConfig())
+	ag, err := agent.New(model, st, retriever, tickets, agent.DefaultConfig(),
+		agent.WithClassifier(classifyAdapter{model: model}))
 	if err != nil {
 		t.Fatalf("构造 Agent 失败: %v", err)
 	}
@@ -82,10 +84,11 @@ func TestLiveAgentAgainstDeepSeek(t *testing.T) {
 				for _, call := range result.ToolCalls {
 					tools = append(tools, call.Code+"("+string(call.ErrorKind)+")")
 				}
-				t.Logf("轮次=%d 耗时=%v token=%d/%d 工具=%v 中断=%v 工单=%d",
+				t.Logf("轮次=%d 耗时=%v token=%d/%d 工具=%v 中断=%v 工单=%d 意图=%s 短路=%v",
 					i+1, elapsed.Round(time.Millisecond),
 					result.Usage.PromptTokens, result.Usage.CompletionTokens,
-					tools, result.Interrupted, result.TicketID)
+					tools, result.Interrupted, result.TicketID,
+					result.Intent, result.ShortCircuited)
 				for _, rr := range result.RoundRecords {
 					t.Logf("  第%d轮 token=%d/%d 工具=%v",
 						rr.Round, rr.PromptTokens, rr.CompletionTokens, rr.Tools)
@@ -106,4 +109,16 @@ func truncate(text string, limit int) string {
 		return text
 	}
 	return string(runes[:limit]) + "..."
+}
+
+// classifyAdapter 用同一个模型做意图分类，供 live 测试验证路由效果。
+type classifyAdapter struct{ model llm.ChatModel }
+
+func (c classifyAdapter) ClassifyIntent(text string) (agent.IntentOutcome, error) {
+	classifier := classify.New(c.model)
+	result, err := classifier.Classify(context.Background(), text)
+	if err != nil {
+		return agent.IntentOutcome{}, err
+	}
+	return agent.IntentOutcome{Intent: result.Intent, Parsed: result.Parsed, Usage: result.Usage}, nil
 }

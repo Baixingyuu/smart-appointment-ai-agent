@@ -78,6 +78,30 @@ type Agent struct {
 	store     store.Store
 	config    Config
 	now       func() time.Time
+
+	// classifier 为可选的意图分类器。
+	//
+	// 存在时先分类再决定路径：寒暄与无关请求无需检索，也无需把
+	// 四个工具的完整 schema 塞进上下文，因此可以短路，
+	// 省掉整轮的工具目录与证据成本。
+	// 为空时行为与无路由版本一致（全部走完整链路）。
+	classifier IntentClassifier
+}
+
+// IntentClassifier 判定用户消息意图。
+//
+// 定义在 agent 包而非 domain：这是编排层需要的协作接口，
+// 不应污染领域模型的语义。
+type IntentClassifier interface {
+	ClassifyIntent(text string) (IntentOutcome, error)
+}
+
+// IntentOutcome 一次意图分类的结果。
+type IntentOutcome struct {
+	Intent domain.Intent
+	// Parsed 为 false 表示模型输出无法解析，已回退到默认意图。
+	Parsed bool
+	Usage  llm.Usage
 }
 
 // Option 调整 Agent 行为。
@@ -86,6 +110,11 @@ type Option func(*Agent)
 // WithClock 注入时钟，用于测试中固定时间。
 func WithClock(now func() time.Time) Option {
 	return func(a *Agent) { a.now = now }
+}
+
+// WithClassifier 注入意图分类器，启用路由短路。
+func WithClassifier(classifier IntentClassifier) Option {
+	return func(a *Agent) { a.classifier = classifier }
 }
 
 // New 构造 Agent。
@@ -175,7 +204,11 @@ type RoundRecord struct {
 
 // TurnResult 一次会话回合的结果。
 type TurnResult struct {
-	Reply string
+	// Intent 为本次路由判定的意图；未启用分类器时为空。
+	Intent domain.Intent
+	// ShortCircuited 为 true 表示本次未进入工具循环（寒暄/无关请求）。
+	ShortCircuited bool
+	Reply          string
 	// Interrupted 为 true 时表示已发起确认，等待用户下一条消息。
 	Interrupted bool
 	// CheckPointID 与 Prompt 仅在 Interrupted 时有效。
@@ -217,7 +250,18 @@ func (a *Agent) Run(ctx context.Context, input TurnInput) (*TurnResult, error) {
 		return a.resume(ctx, pending, input.UserMessage, startedAt)
 	}
 
+	// 先做意图路由再决定路径。
+	//
+	// 顺序很关键：确认恢复必须先于分类——用户回复「确认」时，
+	// 按语义它属于 chitchat（无实质诉求），若先分类会被短路成寒暄回复，
+	// 从而丢失建单确认。
 	result := &TurnResult{}
+	if handled, err := a.routeAndShortCircuit(ctx, input, startedAt, result); err != nil {
+		return nil, err
+	} else if handled {
+		return result, nil
+	}
+
 	messages := []llm.Message{{Role: llm.RoleUser, Content: input.UserMessage}}
 	schemas := a.toolSchemas()
 

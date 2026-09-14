@@ -28,6 +28,11 @@ func main() {
 			fmt.Fprintf(os.Stderr, "错误: %v\n", err)
 			os.Exit(1)
 		}
+	case "eval-intent":
+		if err := runEvalIntent(os.Args[2:]); err != nil {
+			fmt.Fprintf(os.Stderr, "错误: %v\n", err)
+			os.Exit(1)
+		}
 	case "eval-trajectory":
 		if err := runEvalTrajectory(os.Args[2:]); err != nil {
 			fmt.Fprintf(os.Stderr, "错误: %v\n", err)
@@ -59,7 +64,13 @@ func usage() {
   agentdesk serve [选项]         启动 HTTP 服务
   agentdesk demo                 跑一遍完整工单链路（建单/派单/去重/升级/完成）
   agentdesk eval-assign [选项]   运行指派评测
+  agentdesk eval-intent [选项]   运行意图分类评测
   agentdesk eval-trajectory [选项]  运行轨迹评测（工具选择/轮次/成本/延迟）
+
+eval-intent 选项:
+  -dataset string   意图评测集路径（默认 eval/datasets/intent.json）
+  -json string      把机读报告写入该路径
+  -offline          用离线关键词基线（零成本对照，无需 API Key）
 
 eval-trajectory 选项:
   -dataset string   轨迹评测集路径（默认 eval/datasets/trajectory.json）

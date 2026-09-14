@@ -109,9 +109,10 @@ type harness struct {
 type harnessOption func(*harnessConfig)
 
 type harnessConfig struct {
-	policy    tooling.Policy
-	retriever bool
-	config    Config
+	policy     tooling.Policy
+	retriever  bool
+	config     Config
+	classifier IntentClassifier
 }
 
 // withoutRetriever 表示不配置知识库，用于验证 no_knowledge 分支。
@@ -122,6 +123,11 @@ func withoutRetriever() harnessOption {
 // withPolicy 覆盖治理策略。
 func withPolicy(policy tooling.Policy) harnessOption {
 	return func(c *harnessConfig) { c.policy = policy }
+}
+
+// withClassifier 注入意图分类器。
+func withClassifier(classifier IntentClassifier) harnessOption {
+	return func(c *harnessConfig) { c.classifier = classifier }
 }
 
 func newHarness(t *testing.T, responses []*llm.Response, opts ...harnessOption) *harness {
@@ -165,7 +171,11 @@ func newHarness(t *testing.T, responses []*llm.Response, opts ...harnessOption) 
 		config.Policy = tooling.DefaultPolicy()
 	}
 
-	ag, err := New(model, st, retriever, tickets, config, WithClock(func() time.Time { return now }))
+	agentOpts := []Option{WithClock(func() time.Time { return now })}
+	if cfg.classifier != nil {
+		agentOpts = append(agentOpts, WithClassifier(cfg.classifier))
+	}
+	ag, err := New(model, st, retriever, tickets, config, agentOpts...)
 	if err != nil {
 		t.Fatalf("构造 Agent 失败: %v", err)
 	}

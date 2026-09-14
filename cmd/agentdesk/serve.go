@@ -15,7 +15,9 @@ import (
 	"github.com/mac/agentdesk/internal/agent"
 	"github.com/mac/agentdesk/internal/api"
 	"github.com/mac/agentdesk/internal/assign"
+	"github.com/mac/agentdesk/internal/classify"
 	"github.com/mac/agentdesk/internal/conversation"
+	"github.com/mac/agentdesk/internal/evalrun"
 	"github.com/mac/agentdesk/internal/llm"
 	"github.com/mac/agentdesk/internal/rag"
 	"github.com/mac/agentdesk/internal/seed"
@@ -70,7 +72,10 @@ func runServe(args []string) error {
 		retriever = rag.New(seed.KnowledgeChunks(), embedder, rag.DefaultOptions())
 	}
 
-	ag, err := agent.New(chatModel, st, retriever, tickets, agent.DefaultConfig())
+	// 注入意图分类器以启用路由短路：寒暄与无关请求无需走完整工具链路。
+	classifier := classify.New(chatModel)
+	ag, err := agent.New(chatModel, st, retriever, tickets, agent.DefaultConfig(),
+		agent.WithClassifier(evalrun.NewClassifierRunner(classifier)))
 	if err != nil {
 		return err
 	}

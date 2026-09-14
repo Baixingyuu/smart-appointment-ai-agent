@@ -15,6 +15,7 @@ help:
 	@echo "  make serve       启动 HTTP 服务（需 LLM_API_KEY）"
 	@echo "  make serve-offline  启动 HTTP 服务（离线脚本模型，无需密钥）"
 	@echo "  make eval        运行指派评测（基础集 + 对抗集）"
+	@echo "  make eval-intent 运行意图路由评测"
 	@echo "  make eval-trajectory 运行轨迹评测（可传 ARGS=\"-sabotage=...\"）"
 	@echo "  make eval-report 运行评测并写出 JSON 报告"
 	@echo "  make verify-data 独立校验评测集金标（精确有理数运算）"
@@ -50,6 +51,12 @@ serve-offline:
 .PHONY: eval
 eval:
 	$(GO) run ./cmd/agentdesk eval-assign
+
+# 意图路由评测：准确率/Macro-F1/解析率 + 关键词基线对照
+#   make eval-intent ARGS="-offline"   零成本基线
+.PHONY: eval-intent
+eval-intent:
+	$(GO) run ./cmd/agentdesk eval-intent $(ARGS)
 
 # 轨迹评测：工具选择/顺序/轮次/越界/成本/延迟
 # 可传 ARGS 注入缺陷以验证评测区分力，例如：
