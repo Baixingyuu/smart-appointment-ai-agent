@@ -144,13 +144,17 @@ type TurnInput struct {
 //
 // 落库以便评测工具调用准确率与预算超限率。
 type ToolCallRecord struct {
-	Code       string
-	Risk       tooling.RiskLevel
-	Status     string // completed / failed / rejected
-	ErrorKind  tooling.ErrorKind
-	Arguments  string
-	Result     string
+	Code      string
+	Risk      tooling.RiskLevel
+	Status    string // completed / failed / rejected
+	ErrorKind tooling.ErrorKind
+	Arguments string
+	Result    string
+	// DurationMS / DurationUS 分别为毫秒与微秒精度。
+	// 双精度原因同 TurnResult：离线评测的单次工具耗时在微秒级，
+	// 只报毫秒会全为 0。
 	DurationMS int
+	DurationUS int
 }
 
 // TurnResult 一次会话回合的结果。
@@ -162,12 +166,19 @@ type TurnResult struct {
 	CheckPointID string
 	Prompt       string
 
-	TicketID   int64
-	Usage      llm.Usage
-	ToolCalls  []ToolCallRecord
-	RAGResult  *rag.Result
-	Rounds     int
+	TicketID  int64
+	Usage     llm.Usage
+	ToolCalls []ToolCallRecord
+	RAGResult *rag.Result
+	Rounds    int
+	// DurationMS 为整轮耗时（毫秒）。
 	DurationMS int
+	// DurationUS 为整轮耗时（微秒）。
+	//
+	// 同时提供两种精度：真实模型调用耗时在百毫秒级，毫秒足够；
+	// 但脚本化模型与内存存储的离线评测耗时在微秒级，
+	// 只报毫秒会让延迟指标全部变成 0 而失去意义。
+	DurationUS int
 }
 
 // Run 处理一条用户消息。
@@ -212,7 +223,8 @@ func (a *Agent) Run(ctx context.Context, input TurnInput) (*TurnResult, error) {
 		// 没有工具调用即为最终回复，本轮结束。
 		if len(response.ToolCalls) == 0 {
 			result.Reply = response.Content
-			result.DurationMS = int(a.now().Sub(startedAt).Milliseconds())
+			a.finish(result, startedAt)
+			result.DurationUS = int(a.now().Sub(startedAt).Microseconds())
 			return result, nil
 		}
 
@@ -231,7 +243,7 @@ func (a *Agent) Run(ctx context.Context, input TurnInput) (*TurnResult, error) {
 				result.CheckPointID = interrupt.CheckPointID
 				result.Prompt = interrupt.Prompt
 				result.Reply = interrupt.Prompt
-				result.DurationMS = int(a.now().Sub(startedAt).Milliseconds())
+				a.finish(result, startedAt)
 				return result, nil
 			}
 
@@ -252,8 +264,22 @@ func (a *Agent) Run(ctx context.Context, input TurnInput) (*TurnResult, error) {
 	// 轮次用尽仍无最终回复：明确告知而非静默截断，
 	// 否则用户会收到空回复，且无人知道模型陷在工具循环里。
 	result.Reply = "抱歉，我处理这个问题时步骤过多，已转由人工继续跟进。"
-	result.DurationMS = int(a.now().Sub(startedAt).Milliseconds())
+	a.finish(result, startedAt)
 	return result, nil
+}
+
+// elapsedMS 同时返回毫秒与微秒耗时。
+func elapsedMS(now, startedAt time.Time) (int, int) {
+	elapsed := now.Sub(startedAt)
+	return int(elapsed.Milliseconds()), int(elapsed.Microseconds())
+}
+
+// finish 统一写入耗时字段。
+//
+// 集中在一处而非散落在各返回分支：早期实现手动赋值，新增分支时容易遗漏，
+// 结果某些路径的耗时恒为 0，指标静默失真。
+func (a *Agent) finish(result *TurnResult, startedAt time.Time) {
+	result.DurationMS, result.DurationUS = elapsedMS(a.now(), startedAt)
 }
 
 // executeTool 执行一次工具调用，返回审计记录、给模型的观察结果，
@@ -273,7 +299,7 @@ func (a *Agent) executeTool(ctx context.Context, input TurnInput, call llm.ToolC
 	if err != nil {
 		record.ErrorKind = tooling.KindOf(err)
 		record.Result = err.Error()
-		record.DurationMS = int(a.now().Sub(startedAt).Milliseconds())
+		record.DurationMS, record.DurationUS = elapsedMS(a.now(), startedAt)
 		// 拒绝也要回灌给模型，让它有机会改正（例如改用别的工具），
 		// 而不是直接失败让用户看到错误。
 		return record, "工具调用被拒绝：" + err.Error(), nil
@@ -284,7 +310,7 @@ func (a *Agent) executeTool(ctx context.Context, input TurnInput, call llm.ToolC
 	if err != nil {
 		record.ErrorKind = tooling.KindOf(err)
 		record.Result = err.Error()
-		record.DurationMS = int(a.now().Sub(startedAt).Milliseconds())
+		record.DurationMS, record.DurationUS = elapsedMS(a.now(), startedAt)
 		return record, "工具参数不合法：" + err.Error(), nil
 	}
 
@@ -295,18 +321,18 @@ func (a *Agent) executeTool(ctx context.Context, input TurnInput, call llm.ToolC
 		if err != nil {
 			record.ErrorKind = tooling.KindExecFailed
 			record.Result = err.Error()
-			record.DurationMS = int(a.now().Sub(startedAt).Milliseconds())
+			record.DurationMS, record.DurationUS = elapsedMS(a.now(), startedAt)
 			return record, "发起确认失败：" + err.Error(), nil
 		}
 		record.Status = "awaiting_confirmation"
 		record.ErrorKind = tooling.KindNeedsConfirm
 		record.Result = interrupt.Prompt
-		record.DurationMS = int(a.now().Sub(startedAt).Milliseconds())
+		record.DurationMS, record.DurationUS = elapsedMS(a.now(), startedAt)
 		return record, "", interrupt
 	}
 
 	observation, err := def.Handler(handlerCtx, args)
-	record.DurationMS = int(a.now().Sub(startedAt).Milliseconds())
+	record.DurationMS, record.DurationUS = elapsedMS(a.now(), startedAt)
 	if err != nil {
 		record.ErrorKind = tooling.KindOf(err)
 		record.Result = err.Error()
@@ -334,7 +360,7 @@ func (a *Agent) resume(ctx context.Context, pending domain.Interrupt, text strin
 		}
 		result.Interrupted = false
 		result.Reply = "该确认已过期，请重新描述你的问题。"
-		result.DurationMS = int(a.now().Sub(startedAt).Milliseconds())
+		a.finish(result, startedAt)
 		return result, nil
 	}
 
@@ -346,7 +372,7 @@ func (a *Agent) resume(ctx context.Context, pending domain.Interrupt, text strin
 			return nil, err
 		}
 		result.Reply = "已取消本次工单创建。如仍需协助，请继续说明。"
-		result.DurationMS = int(a.now().Sub(startedAt).Milliseconds())
+		a.finish(result, startedAt)
 		return result, nil
 
 	case domain.DecisionConfirm:
@@ -358,7 +384,7 @@ func (a *Agent) resume(ctx context.Context, pending domain.Interrupt, text strin
 				return nil, saveErr
 			}
 			result.Reply = "工单创建失败，请稍后重试或联系人工客服。"
-			result.DurationMS = int(a.now().Sub(startedAt).Milliseconds())
+			a.finish(result, startedAt)
 			return result, nil
 		}
 		pending.Status = domain.InterruptResolved
@@ -373,7 +399,7 @@ func (a *Agent) resume(ctx context.Context, pending domain.Interrupt, text strin
 			Result: fmt.Sprintf("工单 T%d 已创建", created.Ticket.ID),
 		})
 		result.Reply = a.ticketCreatedReply(created)
-		result.DurationMS = int(a.now().Sub(startedAt).Milliseconds())
+		a.finish(result, startedAt)
 		return result, nil
 
 	default:
@@ -382,7 +408,7 @@ func (a *Agent) resume(ctx context.Context, pending domain.Interrupt, text strin
 		result.CheckPointID = pending.CheckPointID
 		result.Prompt = fmt.Sprintf("请回复「确认」创建工单，或回复「取消」放弃。\n\n%s", pending.Prompt)
 		result.Reply = result.Prompt
-		result.DurationMS = int(a.now().Sub(startedAt).Milliseconds())
+		a.finish(result, startedAt)
 		return result, nil
 	}
 }

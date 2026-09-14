@@ -13,6 +13,7 @@ help:
 	@echo ""
 	@echo "  make test        运行全部单元测试"
 	@echo "  make eval        运行指派评测（基础集 + 对抗集）"
+	@echo "  make eval-trajectory 运行轨迹评测（可传 ARGS=\"-sabotage=...\"）"
 	@echo "  make eval-report 运行评测并写出 JSON 报告"
 	@echo "  make verify-data 独立校验评测集金标（精确有理数运算）"
 	@echo "  make fmt         格式化 Go 代码"
@@ -35,6 +36,13 @@ test:
 .PHONY: eval
 eval:
 	$(GO) run ./cmd/agentdesk eval-assign
+
+# 轨迹评测：工具选择/顺序/轮次/越界/成本/延迟
+# 可传 ARGS 注入缺陷以验证评测区分力，例如：
+#   make eval-trajectory ARGS="-sabotage=always_write"
+.PHONY: eval-trajectory
+eval-trajectory:
+	$(GO) run ./cmd/agentdesk eval-trajectory $(ARGS)
 
 .PHONY: eval-report
 eval-report:
