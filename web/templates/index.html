@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>智能预约助手 - AI聊天机器人</title>
+    <title>智能工单助手 - AI聊天机器人</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
         * {
@@ -368,30 +368,30 @@
         <div class="header">
             <div class="header-title">
                 <i class="fas fa-robot"></i>
-                智能预约助手
+                智能工单助手
             </div>
             <div class="header-subtitle">
-                AI驱动的按摩房预约系统 - 为您提供便捷智能的预约体验
+                AI 驱动的企业技术支持工单系统 - 多 Agent 协作 · RAG 知识问答 · 智能派单
             </div>
         </div>
         
         <!-- 导航栏 -->
         <div class="nav-bar">
-            <button class="nav-btn" onclick="window.location.href='/user_behavior'">
+            <button class="nav-btn" onclick="window.location.href='/tickets'">
+                <i class="fas fa-ticket-alt"></i>
+                工单列表
+            </button>
+            <button class="nav-btn" onclick="window.location.href='/engineers'">
+                <i class="fas fa-users"></i>
+                工程师列表
+            </button>
+            <button class="nav-btn" onclick="window.location.href='/customers'">
                 <i class="fas fa-chart-line"></i>
-                用户行为分析
+                客户健康度
             </button>
             <button class="nav-btn" onclick="window.location.href='/knowledge'">
                 <i class="fas fa-database"></i>
                 知识库管理
-            </button>
-            <button class="nav-btn" onclick="window.location.href='/technician'">
-                <i class="fas fa-users"></i>
-                技师状态
-            </button>
-            <button class="nav-btn" onclick="window.location.href='/technician_schedule'">
-                <i class="fas fa-calendar-alt"></i>
-                技师排班
             </button>
             <button class="nav-btn" id="clear-btn">
                 <i class="fas fa-trash-alt"></i>
@@ -408,17 +408,17 @@
                 </div>
                 <div class="bubble">
                     <div class="bot-info">
-                        👋 您好！我是智能预约助手，很高兴为您服务！
+                        👋 您好！我是智能工单助手，很高兴为您服务！
                     </div>
                     <div class="bot-reply">
                         我可以帮您：<br>
-                        • 🕐 预约按摩服务<br>
-                        • 👨‍⚕️ 查询技师状态<br>
-                        • 📅 安排预约时间<br>
-                        • ❓ 解答相关问题
+                        • 🎫 提交技术支持工单<br>
+                        • ❓ 咨询产品功能 / SLA<br>
+                        • 👨‍💻 智能匹配工程师<br>
+                        • 📊 分析客户健康度
                     </div>
                     <div class="bot-success">
-                        请告诉我您需要什么帮助？
+                        请告诉我您遇到的问题或想咨询的内容？
                     </div>
                 </div>
             </div>
@@ -515,13 +515,13 @@
                     
                     // 检查回复类型并应用不同样式
                     let styledReply = replyText;
-                    if (replyText.includes('预约成功') || replyText.includes('已为您预约')) {
+                    if (replyText.includes('工单已创建') || replyText.includes('已分派')) {
                         // 成功消息
                         styledReply = `<div class="bot-success">✅ ${replyText}</div>`;
-                    } else if (replyText.includes('抱歉') || replyText.includes('失败') || replyText.includes('不空闲')) {
+                    } else if (replyText.includes('抱歉') || replyText.includes('失败') || replyText.includes('已满')) {
                         // 错误消息
                         styledReply = `<div class="bot-error">❌ ${replyText}</div>`;
-                    } else if (replyText.includes('请问') || replyText.includes('需要')) {
+                    } else if (replyText.includes('请问') || replyText.includes('需要') || replyText.includes('是否')) {
                         // 询问消息
                         styledReply = `<div class="bot-info">💬 ${replyText}</div>`;
                     } else {

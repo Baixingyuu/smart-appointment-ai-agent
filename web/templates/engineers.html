@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>工程师列表 - 智能工单助手</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+               background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; padding: 30px; }
+        .container { max-width: 1000px; margin: 0 auto; }
+        h1 { color: white; margin-bottom: 8px; }
+        .subtitle { color: rgba(255,255,255,0.85); margin-bottom: 24px; }
+        .nav { margin-bottom: 24px; display: flex; gap: 10px; flex-wrap: wrap; }
+        .nav a { color: white; text-decoration: none; padding: 8px 16px; background: rgba(255,255,255,0.2);
+                 border-radius: 20px; font-size: 14px; transition: all 0.3s; }
+        .nav a:hover { background: rgba(255,255,255,0.35); }
+        .card { background: white; border-radius: 16px; padding: 20px; box-shadow: 0 8px 24px rgba(0,0,0,0.1); }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 12px 14px; text-align: left; border-bottom: 1px solid #f0f0f0; font-size: 14px; }
+        th { color: #667eea; font-weight: 600; }
+        .badge { padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+        .level-junior { background: #e8f5e9; color: #388e3c; }
+        .level-intermediate { background: #e3f2fd; color: #1976d2; }
+        .level-senior { background: #fff3e0; color: #f57c00; }
+        .level-expert { background: #fce4ec; color: #c2185b; }
+        .load { font-weight: 700; }
+        .load-full { color: #e74c3c; }
+        .load-ok { color: #27ae60; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>👨‍💻 工程师列表</h1>
+    <div class="subtitle">技术支持工程师及其当前负载</div>
+    <div class="nav">
+        <a href="/">← 返回聊天</a>
+        <a href="/tickets">工单列表</a>
+        <a href="/customers">客户健康度</a>
+        <a href="/knowledge">知识库管理</a>
+    </div>
+    <div class="card">
+        <table>
+            <thead>
+                <tr><th>姓名</th><th>等级</th><th>专长</th></tr>
+            </thead>
+            <tbody id="engineer-body">
+                <tr><td colspan="3">加载中...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+<script>
+async function loadEngineers() {
+    const res = await fetch('/api/engineers');
+    const data = await res.json();
+    const tbody = document.getElementById('engineer-body');
+    const levelLabels = {junior:'初级', intermediate:'中级', senior:'高级', expert:'专家'};
+    tbody.innerHTML = data.map(e => {
+        return `<tr>
+            <td>${e.name}</td>
+            <td><span class="badge level-${e.level}">${levelLabels[e.level] || e.level}</span></td>
+            <td>${e.specialty}</td>
+        </tr>`;
+    }).join('');
+}
+loadEngineers();
+</script>
+</body>
+</html>

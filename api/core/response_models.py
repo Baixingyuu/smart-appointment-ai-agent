@@ -1,8 +1,7 @@
 """
-简化的API响应模型
-
-只保留第一版真正需要的核心功能
+API 响应模型
 """
+
 from pydantic import BaseModel
 from typing import Any, Dict, Optional
 from datetime import datetime
@@ -20,21 +19,21 @@ class DataResponse(BaseResponse):
     data: Any
 
 
-# 预约相关模型
-class AppointmentRequest(BaseModel):
-    user_id: str
-    service_type: str
-    preferred_time: str
-    notes: Optional[str] = None
+# 工单相关模型
+class TicketCreateRequest(BaseModel):
+    customer_id: int
+    title: str
+    description: str
+    category: str = "incident"
+    priority: str = "P3"
 
 
-class AppointmentResponse(BaseModel):
-    appointment_id: str
-    user_id: str
-    service_type: str
-    scheduled_time: str
+class TicketAssignRequest(BaseModel):
+    engineer_id: int
+
+
+class TicketStatusUpdateRequest(BaseModel):
     status: str
-    notes: Optional[str] = None
 
 
 # 咨询相关模型
@@ -44,35 +43,11 @@ class ConsultationRequest(BaseModel):
     category: Optional[str] = None
 
 
-class ConsultationResponse(BaseModel):
-    consultation_id: str
-    question: str
-    answer: str
-    category: Optional[str] = None
-
-
-# 用户行为相关模型
-class UserBehaviorRequest(BaseModel):
-    user_id: str
-    action: str
-    context: Optional[Dict[str, Any]] = None
-
-
-class UserBehaviorResponse(BaseModel):
-    user_id: str
-    action: str
-    timestamp: datetime
-    context: Optional[Dict[str, Any]] = None
-
-
 # 任务分类相关模型
 class TaskClassificationRequest(BaseModel):
     text: str
-    context: Optional[Dict[str, Any]] = None
 
 
-class TaskClassificationResponse(BaseModel):
-    text: str
-    category: str
-    confidence: float
-    reasoning: Optional[str] = None
+# 客户相关模型
+class CustomerAnalysisRequest(BaseModel):
+    customer_id: str = "default_customer"

@@ -1,30 +1,29 @@
-# Smart Appointment AI Agent
+# 智能工单助手（Support Ticketing AI Agent）
 
-Smart Appointment AI Agent 是一个面向按摩门店场景的智能预约与咨询系统。项目基于 FastAPI、LangChain、FAISS、SQLite 和多 Agent 协作架构，实现了意图识别、RAG 知识问答、技师智能匹配、预约管理、用户行为分析和个性化提醒等能力。
+智能工单助手是一个面向 SaaS/企业服务场景的技术支持工单调度系统。项目基于 FastAPI、LangChain、FAISS、SQLite 和多 Agent 协作架构，实现了意图识别、RAG 知识问答、工程师智能匹配、工单全生命周期管理和客户健康度分析等能力。
 
-这个项目的核心目标不是只做一个普通的预约表单，而是尝试把门店前台日常需要处理的高频工作自动化：理解用户想咨询还是预约，判断服务偏好，匹配合适技师，检查可用时间，生成预约结果，并在必要时结合天气、历史行为和偏好数据给出更贴近用户的提醒与推荐。
+这个项目的核心目标不是只做一个工单表单，而是把技术支持中心每天需要处理的高频工作自动化：理解用户是想咨询还是报障，判断问题类型与优先级，按“等级过滤 + 专长匹配”二级策略匹配最合适的工程师，创建并分派工单，并在事后分析客户健康度、预警续费与流失风险。
 
 ## 项目背景
 
-在一次按摩门店体验中，我注意到前台人员需要同时处理大量复杂事务：技师排班、顾客预约、服务项目咨询、价格计算、临时改约、技师偏好记录和收款确认等。随着技师数量和顾客量增加，传统人工前台模式很容易出现沟通成本高、信息遗漏、排班冲突和服务体验不稳定的问题。
+在企业级 SaaS 服务中，技术支持中心需要同时处理大量复杂事务：产品咨询、故障报修、工单派发、优先级判定、工程师能力匹配和客户续费维护。随着客户规模和工单量增加，传统的人工客服模式容易出现响应慢、派单不准和客户流失等问题。
 
-因此，本项目尝试用 AI Agent 的方式重构这一流程：让系统能够像一个智能前台一样主动理解用户需求，并把不同任务分发给对应的专业 Agent 处理。它既适用于按摩门店，也可以扩展到其他需要人员排班、预约调度和智能客服的服务行业。
+因此，本项目用多 Agent 的方式重构这一流程：让系统像一位智能技术支持主管，主动理解客户需求，把咨询、报障、派单、客户洞察等任务分发给对应的专业 Agent 处理。
 
 ## 核心能力
 
-- **智能任务分类**：自动识别用户是在咨询服务、预约技师、查询无关问题，还是触发用户行为分析，并将请求路由到对应 Agent。
-- **多 Agent 协作**：通过任务分类 Agent、咨询 Agent、预约 Agent 和用户行为 Agent 分工处理复杂流程，减少单个模块的职责膨胀。
-- **RAG 知识咨询**：使用 FAISS 向量索引检索知识库内容，结合大模型生成自然语言回答，支持流式输出。
-- **智能预约管理**：根据用户需求、技师专长、历史偏好和可用时间进行匹配，辅助完成预约确认。
-- **用户行为分析**：记录用户交互与预约行为，分析偏好模式，并用于后续推荐和个性化反馈。
-- **个性化提醒**：在预约完成后，可结合实时天气等外部信息生成更贴近实际场景的提醒。
-- **Embedding 缓存优化**：通过数据库缓存和文件缓存减少重复向量计算，提高知识检索性能。
-- **数据管理能力**：支持知识库、技师信息和用户行为数据的增删改查，并在数据变化后自动维护索引。
-- **日志与兜底机制**：保留关键处理过程日志，在信息不足或异常情况下提供更稳定的降级处理。
+- **智能意图识别**：自动区分用户是在咨询产品功能、提交工单，还是无关请求，并路由到对应 Agent。
+- **多 Agent 协作**：任务分类 Agent、咨询 Agent、工单 Agent、客户洞察 Agent 分工处理，职责单一、易扩展。
+- **RAG 知识问答**：基于产品文档知识库（FAISS 向量检索）生成自然语言回答，支持流式输出。
+- **智能工单派发**：按优先级过滤工程师等级，再按问题描述与工程师专长的 Embedding 相似度匹配派单（二级匹配）。
+- **工单全生命周期**：待分派 → 已分派 → 处理中 → 待确认 → 已解决 → 已关闭，状态流转完整。
+- **客户健康度分析**：基于近 30 天客户行为（工单数、咨询数、活跃度）评估健康度，输出续费/流失预警。
+- **Embedding 缓存优化**：知识库向量缓存，减少重复向量计算。
+- **分层架构**：严格五层架构，下层不反向调用上层，避免循环依赖。
 
 ## 系统架构
 
-项目采用严格的五层架构，核心原则是：**下层不能反向调用上层**。这样可以避免循环依赖，让业务逻辑、数据访问和接口编排保持清晰边界。
+项目采用严格的五层架构，核心原则：**下层不能反向调用上层**。
 
 ```text
 Web & Application Layer
@@ -32,7 +31,7 @@ Web & Application Layer
 API Layer
     ↓  api/：外部接口、请求编排、响应封装
 Agents Layer
-    ↓  agents/：AI Agent、任务路由、对话流程控制
+    ↓  agents/：AI Agent、意图路由、对话流程控制
 Services Layer
     ↓  services/：业务逻辑、推荐算法、向量处理
 DB Layer
@@ -55,152 +54,110 @@ DB Layer
 
 ## Agent 设计
 
-### Task Classification Agent
+### Task Classification Agent（任务分类）
 
-任务分类 Agent 是系统的主调度器，负责分析用户输入、判断任务类型，并把请求分发给合适的专业 Agent。
+系统主调度器，负责分析用户输入、判断任务类型（咨询 / 工单 / 其他），并分发给对应 Agent。
 
 ```text
 用户输入 → 意图分析 → Agent 路由 → 响应协调
 ```
 
-主要职责：
+### Consultation Agent（咨询）
 
-- 判断用户意图
-- 维护对话状态
-- 控制不同 Agent 之间的切换
-- 处理无法分类或超出能力范围的问题
-
-### Consultation Agent
-
-咨询 Agent 负责知识问答场景，使用 RAG 流程从知识库中检索相关内容，再结合大模型生成回答。
+负责产品知识问答，使用 RAG 流程从产品文档知识库检索相关内容，再结合大模型生成回答。
 
 ```text
 任务分类 → 知识检索 → FAISS 相似度搜索 → 流式回答
 ```
 
-主要职责：
+### Ticketing Agent（工单）
 
-- 区分咨询问题类型
-- 从知识库检索相关内容
-- 构建提示词
-- 生成自然语言回答
-
-### Appointment Agent
-
-预约 Agent 负责预约相关流程，包括解析用户输入、匹配技师、检查预约信息、生成确认消息等。
+负责工单全流程：解析问题描述、判断类型与优先级、匹配工程师、创建并分派工单。
 
 ```text
-任务分类 → 解析预约需求 → 技师匹配 → 预约确认
+任务分类 → 解析工单信息 → 优先级判定 → 工程师匹配（等级过滤 + 专长匹配）→ 工单创建
 ```
 
-主要职责：
+### Customer Insight Agent（客户洞察）
 
-- 提取预约时间、服务项目、技师偏好等信息
-- 匹配合适技师
-- 处理信息缺失时的追问
-- 生成预约结果和提醒
-
-### User Behavior Agent
-
-用户行为 Agent 更偏向后台智能分析，不完全依赖用户显式请求。它会根据交互记录、预约历史和偏好数据分析用户行为，为后续推荐提供依据。
+偏向后台智能分析，根据客户交互记录和工单历史评估健康度，输出续费/流失预警。
 
 ```text
-行为记录 → 模式分析 → 偏好更新 → 个性化推荐
+行为记录 → 健康度评分 → 流失风险判定 → 续费/挽留建议
 ```
-
-主要职责：
-
-- 记录用户行为
-- 分析偏好模式
-- 生成推荐依据
-- 支持主动反馈和个性化服务
 
 ## 核心设计思想
 
 ### 1. 用任务分类降低系统复杂度
 
-系统并不让一个 Agent 处理所有事情，而是先判断用户意图，再分发给对应模块。这样可以让咨询、预约、行为分析等逻辑保持独立，也更容易扩展新的 Agent。
+系统不让一个 Agent 处理所有事情，而是先判断意图再分发，让咨询、工单、洞察等逻辑保持独立，也更容易扩展新 Agent。
 
 ### 2. 用 RAG 解决专业知识回答
 
-按摩服务相关的项目介绍、注意事项、适用人群等内容更适合通过知识库维护。RAG 能让回答基于可控知识来源，而不是完全依赖大模型自由生成。
+产品功能、套餐等知识适合通过知识库维护。RAG 让回答基于可控知识来源，而不是完全依赖大模型自由发挥。
 
-### 3. 用用户行为让推荐更个性化
+### 3. 用「等级过滤 + 专长匹配」二级匹配做派单
 
-系统会记录用户的咨询、预约和偏好信息。后续在推荐技师或服务项目时，可以结合历史行为，而不是每次都从零开始询问。
+工单派发不只看技术栈是否匹配：先按优先级过滤工程师等级（P0 仅专家级），再按问题描述与工程师专长的 Embedding 相似度排序，取最相关者派单。该策略刻意**不做“当前负载均衡”**：一是演示场景的并发量不足以体现负载调度的价值，二是负载均衡更适合放在队列/调度层（如工单池轮询、工程师工作台抢单）而非首轮匹配，避免把“能力匹配准确性”与“负载公平性”两个目标耦合在同一排序中。
 
 ### 4. 用分层架构保证可维护性
 
-Agent 负责智能流程，Service 负责业务逻辑，Repository 负责数据访问。每层只关心自己的职责，减少后期修改时的连锁影响。
-
-### 5. 为真实业务场景预留扩展空间
-
-项目目前以本地 SQLite 和单体服务为主，但架构上预留了模型提供商切换、MCP 外部服务接入、后台任务、缓存优化和云端部署的扩展方向。
-
-## 架构图
-
-![System Architecture](./architecture%20.jpg)
+Agent 负责智能流程，Service 负责业务逻辑，Repository 负责数据访问，每层只关心自己的职责。
 
 ## 技术栈
 
 - **后端框架**：FastAPI、Uvicorn
 - **AI 框架**：LangChain
-- **大模型接入**：兼容 OpenAI 格式的模型提供商，例如 Qwen、DeepSeek、Zhipu、OpenAI、Azure OpenAI
+- **大模型接入**：兼容 OpenAI 格式的模型提供商（Qwen、DeepSeek、Zhipu、OpenAI、Azure OpenAI）
 - **向量检索**：FAISS
 - **数据库**：SQLite、SQLAlchemy
 - **RAG 能力**：Embedding、向量索引、知识库检索、提示词构建
 - **流式响应**：Python AsyncGenerator
 - **前端页面**：Jinja2 模板、静态 CSS
-- **外部服务扩展**：MCP，用于天气等外部信息接入
 - **配置管理**：python-dotenv
-- **后台任务**：schedule
 
 ## 项目结构
 
 ```text
-Smart appointment AI agent/
-├── agents/                         # 多 Agent 智能层
+support-ticketing-ai-agent/
+├── agents/                          # 多 Agent 智能层
 │   ├── task_classification_agent.py # 任务分类与主路由
 │   ├── consultant_agent.py          # RAG 咨询 Agent
-│   ├── appointment_agent.py         # 智能预约 Agent
-│   ├── user_behavior_agent.py       # 用户行为分析 Agent
+│   ├── ticketing_agent.py           # 工单 Agent
+│   ├── customer_insight_agent.py    # 客户洞察 Agent
 │   ├── task_classification/         # 意图识别、状态管理、路由逻辑
 │   ├── consultant/                  # 知识检索、提示词、回答生成
-│   ├── appointment/                 # 预约解析、技师匹配、消息构建
-│   └── user_behavior/               # 行为记录、偏好管理、模式分析
+│   ├── ticketing/                   # 工单解析、工程师匹配、消息构建
+│   └── customer_insight/            # 健康度分析
 ├── api/                             # API 编排层
-│   ├── appointment.py               # 预约接口
+│   ├── ticket.py                    # 工单接口
 │   ├── consultation.py              # 咨询接口
 │   ├── task.py                      # 任务分类接口
 │   ├── chat_handler.py              # 流式聊天处理
-│   ├── technician.py                # 技师管理接口
-│   ├── knowledge.py                 # 知识库管理接口
-│   └── user_behavior_analysis.py    # 用户行为分析接口
+│   ├── engineer.py                  # 工程师接口
+│   ├── customer.py                  # 客户与健康度接口
+│   └── knowledge.py                 # 知识库管理接口
 ├── services/                        # 业务逻辑层
-│   ├── appointment_service.py       # 预约业务逻辑
+│   ├── ticket_service.py            # 工单业务逻辑（创建、分派、状态流转）
 │   ├── knowledge_service.py         # 知识库管理
-│   ├── recommendation_service.py    # 推荐逻辑
-│   ├── technician_service.py        # 技师信息管理
-│   ├── text_embedding.py            # Embedding 与向量处理
-│   └── user_behavior_service.py     # 用户行为服务
+│   ├── engineer_service.py          # 工程师管理与查询
+│   ├── customer_service.py          # 客户管理与健康度
+│   └── text_embedding.py            # Embedding 与向量处理
 ├── db/                              # 数据持久化层
 │   ├── models.py                    # SQLAlchemy 模型
 │   ├── db_router.py                 # 数据库路由
-│   ├── local_db.py                  # 本地数据库操作
 │   ├── base/                        # 数据库基础接口
 │   └── repositories/                # Repository 数据访问封装
 ├── config/                          # 配置模块
-│   ├── constants.py                 # 常量与枚举
+│   ├── constants.py                 # 常量、枚举、优先级-等级映射
 │   ├── database.py                  # 数据库配置
 │   ├── model_provider.py            # 模型与 Embedding Provider 工厂
 │   ├── settings.py                  # 应用配置
-│   └── time_config.py               # 时间与排班配置
+│   └── time_config.py               # 时间配置
 ├── web/                             # Web 页面层
 │   ├── routes.py                    # 页面路由
 │   ├── templates/                   # HTML 模板
 │   └── static/                      # 静态资源
-├── mcp-server/                      # MCP 外部服务扩展
-├── data/                            # 数据库与缓存目录
 ├── tests/                           # 测试用例
 ├── app.py                           # 应用入口
 ├── requirements.txt                 # Python 依赖
@@ -222,13 +179,7 @@ Windows PowerShell：
 .\.venv\Scripts\Activate.ps1
 ```
 
-Windows CMD：
-
-```cmd
-.venv\Scripts\activate.bat
-```
-
-macOS 或 Linux：
+macOS / Linux：
 
 ```bash
 source .venv/bin/activate
@@ -242,19 +193,11 @@ pip install -r requirements.txt
 
 ### 3. 配置环境变量
 
-复制环境变量模板：
-
 ```bash
 cp .env.example .env
 ```
 
-Windows PowerShell 可以使用：
-
-```powershell
-Copy-Item .env.example .env
-```
-
-然后在 `.env` 中填写模型和数据库配置。项目支持 OpenAI 兼容格式的大模型与 Embedding 服务。
+在 `.env` 中填写模型配置：
 
 ```env
 MODEL_PROVIDER=qwen
@@ -267,18 +210,8 @@ EMBEDDING_API_KEY=your_embedding_api_key_here
 EMBEDDING_BASE_URL=your_openai_compatible_embedding_base_url_here
 EMBEDDING_MODEL=your_embedding_model_name_here
 
-DATABASE_URL=sqlite:///./data/smart_appointment.db
-
-DEBUG=True
-LOG_LEVEL=INFO
+DATABASE_URL=sqlite:///./data/support_ticketing.db
 ```
-
-常见配置方向：
-
-- Qwen：使用阿里云百炼或 DashScope 的模型、Base URL 和 API Key。
-- DeepSeek：可用于聊天模型，Embedding 可搭配其他兼容服务。
-- Zhipu：可配置智谱的聊天模型和向量模型。
-- Azure OpenAI：将 `MODEL_PROVIDER` 设置为 `azure`，并补充对应的 Azure OpenAI 环境变量。
 
 ### 4. 启动服务
 
@@ -286,73 +219,33 @@ LOG_LEVEL=INFO
 python -m uvicorn app:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-如果 8000 端口已被占用，可以换成 8001：
-
-```bash
-python -m uvicorn app:app --host 127.0.0.1 --port 8001 --reload
-```
-
-启动后可以访问：
+启动后访问：
 
 - Web 页面：http://127.0.0.1:8000
 - API 文档：http://127.0.0.1:8000/docs
-- ReDoc 文档：http://127.0.0.1:8000/redoc
 
 ## 测试
-
-运行全部测试：
 
 ```bash
 pytest
 ```
 
-运行单个测试文件：
-
-```bash
-pytest tests/test_task_classification_agent.py
-```
-
 ## 主要页面
 
-- 首页聊天与预约入口：`web/templates/index.html`
+- 首页聊天与工单入口：`web/templates/index.html`
+- 工单列表：`web/templates/tickets.html`
+- 工程师列表：`web/templates/engineers.html`
+- 客户健康度：`web/templates/customers.html`
 - 知识库管理：`web/templates/knowledge_management.html`
-- 技师管理：`web/templates/technician.html`
-- 技师排班：`web/templates/technician_schedule.html`
-- 用户行为分析：`web/templates/user_behavior_analysis.html`
 
 ## 后续规划
 
-### 更强的 Agent 自主能力
-
-- 增加 Agent 自我反思机制，让系统能够评估回答质量和预约成功率。
-- 引入更完整的多轮推理链，提升复杂预约和冲突处理能力。
-- 根据真实用户反馈优化推荐策略。
-
-### 更完整的多 Agent 协作
-
-- 增加 Agent-to-Agent 通信机制，减少所有任务都依赖主分类器转发的问题。
-- 将用户行为 Agent 的后台分析能力做得更稳定，支持定时任务和主动触达。
-- 把预约、推荐、咨询之间的上下文记忆打通得更自然。
-
-### 生产化能力
-
-- 增加用户登录、权限控制和数据隔离。
-- 增加更完整的异常处理和边界场景覆盖。
-- 优化向量检索性能、缓存策略和响应速度。
-- 支持 Docker 部署、云数据库和更标准的日志监控。
+- 增加 Agent 自我反思机制，评估工单分派质量。
+- 引入多轮推理链，提升复杂故障的根因定位能力。
+- 增加客户登录、权限控制与多租户数据隔离。
+- 支持工单满意度回访与知识库自动沉淀。
+- 支持 Docker 部署、云数据库与标准日志监控。
 
 ## 项目价值
 
-这个项目把多 Agent、RAG、用户行为分析、预约调度和外部工具接入放在同一个真实业务场景中验证。它既是一个按摩门店智能前台原型，也可以作为学习 AI Agent 工程化、分层架构、RAG 系统和业务自动化的综合实践项目。
-
-
-
-------------------------------------------------------------
-这个项目是我最早开始自学大模型做的项目。上面的内容是当时（2025年7月左右完成的）。
-其实我在计划做更加复杂，符合时代趋势的Agent，预计在9月份完成，会分享在笔记中。
-但是很多朋友问我这个项目能不能参考，所以我索性总结开源了除了。值得一提的是，上面的内容是25年写的，当时如何配置环境，都是传统方法，写在README中，自己配置。 但是在2026年，不管是vibe coding的方法，还是环境配置的方法，都有了极大改进。
-
-我的项目配置的方法，现在都推荐使用SKILL，所以这里有setup-envrionment skill，一键配置。
-我也总结了更多的这个项目，放在2026年，如何包装，如何使用配套资源，面试真题，视频讲解，使用建议在我的大模型笔记中。
-👉 **请关注小红书：[不转到大模型不改名]（id:4740535877) 获取以上所有资源。**
-👉 b站： 骑猪撞宝马71
+这个项目把多 Agent、RAG、工单调度和客户洞察放在同一个真实业务场景中验证。它既是一个企业技术支持中心原型，也可以作为学习 AI Agent 工程化、分层架构、RAG 系统和业务自动化的综合实践项目。

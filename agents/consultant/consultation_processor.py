@@ -63,20 +63,21 @@ class ConsultationProcessor:
     async def _record_consultation_behavior(self, user_input: str, knowledge_docs: list, session_id: str):
         """记录咨询行为"""
         try:
-            from agents.user_behavior_agent import UserBehaviorAgent
-            behavior_agent = UserBehaviorAgent()
-            
+            from services.customer_service import CustomerService
+            service = CustomerService()
+
             action_data = {
                 'question': user_input,
                 'knowledge_docs_used': len(knowledge_docs),
                 'categories': list(set(doc.get('category', 'unknown') for doc in knowledge_docs)) if knowledge_docs else []
             }
-            
-            behavior_agent.record_behavior(
+
+            service.record_activity(
+                customer_id="default_customer",
                 action_type='consultation',
                 action_data=action_data,
-                session_id=session_id
+                session_id=session_id,
             )
-            
+
         except Exception as behavior_error:
             print(f"记录咨询行为失败：{behavior_error}")

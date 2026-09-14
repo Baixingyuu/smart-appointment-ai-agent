@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>客户健康度 - 智能工单助手</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+               background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; padding: 30px; }
+        .container { max-width: 900px; margin: 0 auto; }
+        h1 { color: white; margin-bottom: 8px; }
+        .subtitle { color: rgba(255,255,255,0.85); margin-bottom: 24px; }
+        .nav { margin-bottom: 24px; display: flex; gap: 10px; flex-wrap: wrap; }
+        .nav a { color: white; text-decoration: none; padding: 8px 16px; background: rgba(255,255,255,0.2);
+                 border-radius: 20px; font-size: 14px; transition: all 0.3s; }
+        .nav a:hover { background: rgba(255,255,255,0.35); }
+        .card { background: white; border-radius: 16px; padding: 30px; box-shadow: 0 8px 24px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .score-row { display: flex; align-items: center; gap: 20px; margin-bottom: 20px; }
+        .score { font-size: 56px; font-weight: 700; }
+        .score-high { color: #27ae60; }
+        .score-mid { color: #f57c00; }
+        .score-low { color: #e74c3c; }
+        .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; }
+        .metric { background: #f8f9fa; border-radius: 12px; padding: 16px; text-align: center; }
+        .metric .value { font-size: 24px; font-weight: 700; color: #667eea; }
+        .metric .label { font-size: 13px; color: #666; margin-top: 4px; }
+        .insight { background: #fff8e1; border-left: 4px solid #f9a825; padding: 16px; border-radius: 8px; margin-top: 20px; }
+        .insight .title { font-weight: 600; color: #f57c00; margin-bottom: 6px; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>📊 客户健康度分析</h1>
+    <div class="subtitle">基于近 30 天客户行为，评估续费与流失风险</div>
+    <div class="nav">
+        <a href="/">← 返回聊天</a>
+        <a href="/tickets">工单列表</a>
+        <a href="/engineers">工程师列表</a>
+        <a href="/knowledge">知识库管理</a>
+    </div>
+    <div class="card" id="health-card">
+        <p style="color:#999">加载中...</p>
+    </div>
+</div>
+<script>
+async function loadHealth() {
+    const healthRes = await fetch('/api/customers/default_customer/health');
+    const healthData = await healthRes.json();
+    const health = healthData.data || {};
+    const stats = health.statistics || {};
+
+    const scoreClass = health.health_score >= 80 ? 'score-high' : (health.health_score >= 60 ? 'score-mid' : 'score-low');
+
+    let html = `
+        <div class="score-row">
+            <div>
+                <div class="score ${scoreClass}">${health.health_score}</div>
+                <div style="color:#666">健康评分 / 100</div>
+            </div>
+            <div>
+                <div style="font-size:18px;font-weight:600;color:#333">${health.health_level || '未知'}</div>
+                <div style="color:#666;margin-top:4px">流失风险：${health.churn_risk || '未知'}</div>
+            </div>
+        </div>
+        <div class="metrics">
+            <div class="metric"><div class="value">${stats.ticket_created_count ?? 0}</div><div class="label">近30天工单数</div></div>
+            <div class="metric"><div class="value">${stats.consultation_count ?? 0}</div><div class="label">近30天咨询数</div></div>
+            <div class="metric"><div class="value">${stats.days_since_last_activity ?? '-'}</div><div class="label">距上次活跃(天)</div></div>
+            <div class="metric"><div class="value">${stats.total_activities ?? 0}</div><div class="label">总行为数</div></div>
+        </div>`;
+
+    // 生成洞察文案
+    try {
+        const insightRes = await fetch('/api/customers/insight', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({customer_id: 'default_customer'})
+        });
+        const insightData = await insightRes.json();
+        const insight = insightData.data?.insight;
+        if (insight) {
+            html += `<div class="insight"><div class="title">💡 客户成功洞察</div>${insight}</div>`;
+        }
+    } catch (e) {}
+
+    document.getElementById('health-card').innerHTML = html;
+}
+loadHealth();
+</script>
+</body>
+</html>

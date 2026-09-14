@@ -1,0 +1,22 @@
+[
+  {"text": "我们的 API 接口一直返回 500 错误，影响线上业务了", "title": "API 接口返回 500 错误", "category": "incident", "priority": "P1"},
+  {"text": "系统突然打不开了，整个网站都无法访问", "title": "系统无法访问", "category": "incident", "priority": "P0"},
+  {"text": "数据库连接超时，查询很慢", "title": "数据库连接超时", "category": "incident", "priority": "P2"},
+  {"text": "移动端 SDK 集成一直报错，希望帮忙看看", "title": "移动端 SDK 集成报错", "category": "incident", "priority": "P2"},
+  {"text": "想咨询一下私有化部署的流程", "title": "私有化部署咨询", "category": "consultation", "priority": "P3"},
+  {"text": "报表数据对不上，指标口径好像有问题", "title": "报表数据不一致", "category": "incident", "priority": "P2"},
+  {"text": "消息推送收不到，影响用户体验", "title": "消息推送失败", "category": "incident", "priority": "P2"},
+  {"text": "账单金额计算错误，多扣了钱", "title": "账单金额错误", "category": "incident", "priority": "P1"},
+  {"text": "SSO 单点登录一直失败，员工无法登录", "title": "SSO 登录失败", "category": "incident", "priority": "P0"},
+  {"text": "接口报 429 限流错误", "title": "接口限流错误", "category": "incident", "priority": "P3"},
+  {"text": "Webhook 回调没有触发", "title": "Webhook 回调未触发", "category": "incident", "priority": "P2"},
+  {"text": "希望增加一个新的数据导出功能", "title": "新增数据导出功能", "category": "request", "priority": "P3"},
+  {"text": "前端页面渲染白屏，空白一片", "title": "前端页面白屏", "category": "incident", "priority": "P2"},
+  {"text": "K8s 集群 Pod 一直重启，生产环境受影响", "title": "K8s Pod 重启", "category": "incident", "priority": "P1"},
+  {"text": "想了解如何配置 SSO 单点登录", "title": "SSO 配置咨询", "category": "consultation", "priority": "P3"},
+  {"text": "模型 API 调用返回异常，帮忙排查", "title": "模型 API 异常", "category": "incident", "priority": "P2"},
+  {"text": "数据同步延迟严重，差了几个小时", "title": "数据同步延迟", "category": "incident", "priority": "P2"},
+  {"text": "证书配置报错，SSL 握手失败", "title": "证书配置错误", "category": "incident", "priority": "P1"},
+  {"text": "容器镜像部署失败，一直 pending", "title": "容器部署失败", "category": "incident", "priority": "P2"},
+  {"text": "想申请升级到企业版套餐", "title": "套餐升级申请", "category": "request", "priority": "P3"}
+]

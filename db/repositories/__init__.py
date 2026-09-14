@@ -2,17 +2,23 @@
 Repositories Module
 
 数据访问对象模块，包含：
-- 技师数据仓库
-- 知识库数据仓库  
-- 用户行为数据仓库
+- 工程师数据仓库
+- 工单数据仓库
+- 客户数据仓库
+- 知识库数据仓库
+- 客户行为数据仓库
 """
 
-from .technician_repository import TechnicianRepository
+from .engineer_repository import EngineerRepository
+from .ticket_repository import TicketRepository
+from .customer_repository import CustomerRepository
 from .knowledge_repository import KnowledgeRepository
-from .user_behavior_repository import UserBehaviorRepository
+from .customer_activity_repository import CustomerActivityRepository
 
 __all__ = [
-    'TechnicianRepository',
+    'EngineerRepository',
+    'TicketRepository',
+    'CustomerRepository',
     'KnowledgeRepository',
-    'UserBehaviorRepository'
+    'CustomerActivityRepository',
 ]

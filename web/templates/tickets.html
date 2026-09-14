@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>工单列表 - 智能工单助手</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+               background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; padding: 30px; }
+        .container { max-width: 1100px; margin: 0 auto; }
+        h1 { color: white; margin-bottom: 8px; }
+        .subtitle { color: rgba(255,255,255,0.85); margin-bottom: 24px; }
+        .nav { margin-bottom: 24px; display: flex; gap: 10px; flex-wrap: wrap; }
+        .nav a { color: white; text-decoration: none; padding: 8px 16px; background: rgba(255,255,255,0.2);
+                 border-radius: 20px; font-size: 14px; transition: all 0.3s; }
+        .nav a:hover { background: rgba(255,255,255,0.35); }
+        .card { background: white; border-radius: 16px; padding: 20px; box-shadow: 0 8px 24px rgba(0,0,0,0.1); overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 12px 14px; text-align: left; border-bottom: 1px solid #f0f0f0; font-size: 13px; }
+        th { color: #667eea; font-weight: 600; white-space: nowrap; }
+        .badge { padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+        .p0 { background: #fce4ec; color: #c2185b; }
+        .p1 { background: #fff3e0; color: #f57c00; }
+        .p2 { background: #fff8e1; color: #f9a825; }
+        .p3 { background: #e8f5e9; color: #388e3c; }
+        .st-pending { background: #eeeeee; color: #616161; }
+        .st-assigned { background: #e3f2fd; color: #1976d2; }
+        .st-in_progress { background: #fff3e0; color: #f57c00; }
+        .st-resolved { background: #e8f5e9; color: #388e3c; }
+        .st-closed { background: #f5f5f5; color: #9e9e9e; }
+        .st-pending_confirm { background: #f3e5f5; color: #8e24aa; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>🎫 工单列表</h1>
+    <div class="subtitle">全部技术支持工单</div>
+    <div class="nav">
+        <a href="/">← 返回聊天</a>
+        <a href="/engineers">工程师列表</a>
+        <a href="/customers">客户健康度</a>
+        <a href="/knowledge">知识库管理</a>
+    </div>
+    <div class="card">
+        <table>
+            <thead>
+                <tr><th>工单号</th><th>标题</th><th>优先级</th><th>状态</th><th>负责工程师</th><th>客户</th><th>创建时间</th></tr>
+            </thead>
+            <tbody id="ticket-body">
+                <tr><td colspan="7">加载中...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+<script>
+const statusLabels = {pending:'待分派', assigned:'已分派', in_progress:'处理中',
+                      pending_confirm:'待确认', resolved:'已解决', closed:'已关闭'};
+function fmtTime(t) { return t ? new Date(t).toLocaleString('zh-CN', {hour12:false}) : '-'; }
+async function loadTickets() {
+    const res = await fetch('/api/tickets');
+    const data = await res.json();
+    const tbody = document.getElementById('ticket-body');
+    const tickets = data.data || [];
+    if (!tickets.length) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#999">暂无工单，去聊天页提交一个吧</td></tr>';
+        return;
+    }
+    tbody.innerHTML = tickets.map(t => `<tr>
+        <td>${t.ticket_no}</td>
+        <td>${t.title}</td>
+        <td><span class="badge p${t.priority ? t.priority[1] : 3}">${t.priority}</span></td>
+        <td><span class="badge st-${t.status}">${statusLabels[t.status] || t.status}</span></td>
+        <td>${t.engineer_name || '-'}</td>
+        <td>${t.customer_name || '-'}</td>
+        <td>${fmtTime(t.created_at)}</td>
+    </tr>`).join('');
+}
+loadTickets();
+</script>
+</body>
+</html>

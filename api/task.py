@@ -1,30 +1,34 @@
 """
-简化的任务分类API
+任务分类 API
 
-只保留第一版核心功能
+提供用户意图分类接口。
 """
+
 from fastapi import APIRouter, HTTPException
-from .core.response_models import (
-    TaskClassificationRequest,
-    TaskClassificationResponse,
-    DataResponse
-)
+from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/task", tags=["任务分类"])
 
 
-@router.post("/classify", response_model=DataResponse)
+class TaskClassificationRequest(BaseModel):
+    text: str
+
+
+@router.post("/classify")
 async def classify_task(request: TaskClassificationRequest):
-    """分类任务"""
+    """分类任务意图"""
     try:
-        # 简化实现 - 直接导入需要的agent
-        from agents.task_classification_agent import TaskClassificationAgent
-        agent = TaskClassificationAgent()
-        result = await agent.classify_task(request.message)
-        
-        return DataResponse(
-            message="任务分类成功",
-            data=result
-        )
+        from config.model_provider import create_chat_model
+        from agents.task_classification.task_classifier import TaskClassifier
+
+        classifier = TaskClassifier(create_chat_model(temperature=0))
+        category = await classifier.classify_task(request.text)
+        return {
+            "status": "success",
+            "data": {
+                "category": category,
+                "description": classifier.get_category_description(category),
+            }
+        }
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e))

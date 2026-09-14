@@ -1,30 +1,28 @@
 """
-简化的咨询API
+咨询 API
 
-只保留第一版核心功能
+提供产品咨询问答接口（RAG）。
 """
+
 from fastapi import APIRouter, HTTPException
-from .core.response_models import (
-    ConsultationRequest,
-    ConsultationResponse,
-    DataResponse
-)
+from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/consultation", tags=["咨询服务"])
 
 
-@router.post("/ask", response_model=DataResponse)
+class ConsultationRequest(BaseModel):
+    question: str
+    user_id: str = "default_customer"
+
+
+@router.post("/ask")
 async def ask_consultation(request: ConsultationRequest):
     """提交咨询问题"""
     try:
-        # 简化实现 - 直接导入需要的agent
         from agents.consultant_agent import ConsultantAgent
         agent = ConsultantAgent()
-        result = await agent.process_consultation(request.question)
-        
-        return DataResponse(
-            message="咨询处理成功",
-            data={"answer": result, "question": request.question}
-        )
+        async with agent:
+            answer = await agent.consult(request.question)
+        return {"status": "success", "data": {"answer": answer, "question": request.question}}
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e))

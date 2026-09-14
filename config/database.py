@@ -8,7 +8,7 @@ class DatabaseConfig:
     """数据库配置类"""
     
     def __init__(self):
-        self.db_path = os.getenv('DATABASE_URL', 'sqlite:///data/smart_appointment.db')
+        self.db_path = os.getenv('DATABASE_URL', 'sqlite:///data/support_ticketing.db')
         self.echo = os.getenv('DB_ECHO', 'false').lower() == 'true'
         self.pool_size = int(os.getenv('DB_POOL_SIZE', '10'))
         self.max_overflow = int(os.getenv('DB_MAX_OVERFLOW', '20'))
