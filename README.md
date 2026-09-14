@@ -219,6 +219,9 @@ pending --accept--> in_progress --resolve--> done
 
 ## 四轴评测
 
+> 完整的指标定义、归因体系、解读边界与「指标↔失败模式」对照表见
+> **[docs/EVALUATION.md](docs/EVALUATION.md)**。
+
 | 轴 | 数据集 | 关键指标 |
 |---|---|---|
 | 指派匹配 | `assignment.json` + `assignment_hard.json` | Top-1 命中率、MRR、兜底率 |
