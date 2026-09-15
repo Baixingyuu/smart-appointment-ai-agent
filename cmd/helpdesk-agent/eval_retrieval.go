@@ -8,9 +8,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/mac/agentdesk/internal/eval"
-	"github.com/mac/agentdesk/internal/evalrun"
-	"github.com/mac/agentdesk/internal/rag"
+	"github.com/mac/helpdesk-agent/internal/eval"
+	"github.com/mac/helpdesk-agent/internal/evalrun"
+	"github.com/mac/helpdesk-agent/internal/rag"
 )
 
 // runEvalRetrieval 跑检索召回评测。

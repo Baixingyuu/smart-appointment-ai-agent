@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mac/agentdesk/internal/assign"
-	"github.com/mac/agentdesk/internal/domain"
-	"github.com/mac/agentdesk/internal/seed"
-	"github.com/mac/agentdesk/internal/store"
-	"github.com/mac/agentdesk/internal/ticket"
+	"github.com/mac/helpdesk-agent/internal/assign"
+	"github.com/mac/helpdesk-agent/internal/domain"
+	"github.com/mac/helpdesk-agent/internal/seed"
+	"github.com/mac/helpdesk-agent/internal/store"
+	"github.com/mac/helpdesk-agent/internal/ticket"
 )
 
 // runDemo 跑一遍完整工单链路，用于人工验证与演示。

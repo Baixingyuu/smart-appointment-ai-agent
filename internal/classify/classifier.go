@@ -17,8 +17,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mac/agentdesk/internal/domain"
-	"github.com/mac/agentdesk/internal/llm"
+	"github.com/mac/helpdesk-agent/internal/domain"
+	"github.com/mac/helpdesk-agent/internal/llm"
 )
 
 // Result 一次分类的结果。

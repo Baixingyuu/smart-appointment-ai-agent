@@ -9,14 +9,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mac/agentdesk/internal/agent"
-	"github.com/mac/agentdesk/internal/assign"
-	"github.com/mac/agentdesk/internal/eval"
-	"github.com/mac/agentdesk/internal/llm"
-	"github.com/mac/agentdesk/internal/rag"
-	"github.com/mac/agentdesk/internal/seed"
-	"github.com/mac/agentdesk/internal/store"
-	"github.com/mac/agentdesk/internal/ticket"
+	"github.com/mac/helpdesk-agent/internal/agent"
+	"github.com/mac/helpdesk-agent/internal/assign"
+	"github.com/mac/helpdesk-agent/internal/eval"
+	"github.com/mac/helpdesk-agent/internal/llm"
+	"github.com/mac/helpdesk-agent/internal/rag"
+	"github.com/mac/helpdesk-agent/internal/seed"
+	"github.com/mac/helpdesk-agent/internal/store"
+	"github.com/mac/helpdesk-agent/internal/ticket"
 )
 
 // runEvalTrajectory 跑轨迹评测。

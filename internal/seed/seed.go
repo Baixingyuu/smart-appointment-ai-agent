@@ -5,9 +5,9 @@
 package seed
 
 import (
-	"github.com/mac/agentdesk/internal/domain"
-	"github.com/mac/agentdesk/internal/rag"
-	"github.com/mac/agentdesk/internal/store"
+	"github.com/mac/helpdesk-agent/internal/domain"
+	"github.com/mac/helpdesk-agent/internal/rag"
+	"github.com/mac/helpdesk-agent/internal/store"
 )
 
 // 根技能 ID。

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mac/agentdesk/internal/tooling"
+	"github.com/mac/helpdesk-agent/internal/tooling"
 )
 
 // buildDefinitions 构造四个模型侧工具。

@@ -1,4 +1,4 @@
-// Command agentdesk 是一期命令行入口。
+// Command helpdesk-agent 是一期命令行入口。
 //
 // 一期只提供评测与自检命令：派单器不依赖 LLM，因此这套评测
 // 可以在没有任何模型配置的情况下完整复现。
@@ -12,8 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/mac/agentdesk/internal/assign"
-	"github.com/mac/agentdesk/internal/eval"
+	"github.com/mac/helpdesk-agent/internal/assign"
+	"github.com/mac/helpdesk-agent/internal/eval"
 )
 
 func main() {
@@ -63,15 +63,15 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprint(os.Stderr, `agentdesk —— 一期命令
+	fmt.Fprint(os.Stderr, `helpdesk-agent —— 一期命令
 
 用法:
-  agentdesk serve [选项]         启动 HTTP 服务
-  agentdesk demo                 跑一遍完整工单链路（建单/派单/去重/升级/完成）
-  agentdesk eval-assign [选项]   运行指派评测
-  agentdesk eval-retrieval [选项]  运行检索召回评测
-  agentdesk eval-intent [选项]   运行意图分类评测
-  agentdesk eval-trajectory [选项]  运行轨迹评测（工具选择/轮次/成本/延迟）
+  helpdesk-agent serve [选项]         启动 HTTP 服务
+  helpdesk-agent demo                 跑一遍完整工单链路（建单/派单/去重/升级/完成）
+  helpdesk-agent eval-assign [选项]   运行指派评测
+  helpdesk-agent eval-retrieval [选项]  运行检索召回评测
+  helpdesk-agent eval-intent [选项]   运行意图分类评测
+  helpdesk-agent eval-trajectory [选项]  运行轨迹评测（工具选择/轮次/成本/延迟）
 
 eval-retrieval 选项:
   -dataset string   检索评测集路径（默认 eval/datasets/retrieval.json）

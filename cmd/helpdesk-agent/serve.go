@@ -12,17 +12,17 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/mac/agentdesk/internal/agent"
-	"github.com/mac/agentdesk/internal/api"
-	"github.com/mac/agentdesk/internal/assign"
-	"github.com/mac/agentdesk/internal/classify"
-	"github.com/mac/agentdesk/internal/conversation"
-	"github.com/mac/agentdesk/internal/evalrun"
-	"github.com/mac/agentdesk/internal/llm"
-	"github.com/mac/agentdesk/internal/rag"
-	"github.com/mac/agentdesk/internal/seed"
-	"github.com/mac/agentdesk/internal/store"
-	"github.com/mac/agentdesk/internal/ticket"
+	"github.com/mac/helpdesk-agent/internal/agent"
+	"github.com/mac/helpdesk-agent/internal/api"
+	"github.com/mac/helpdesk-agent/internal/assign"
+	"github.com/mac/helpdesk-agent/internal/classify"
+	"github.com/mac/helpdesk-agent/internal/conversation"
+	"github.com/mac/helpdesk-agent/internal/evalrun"
+	"github.com/mac/helpdesk-agent/internal/llm"
+	"github.com/mac/helpdesk-agent/internal/rag"
+	"github.com/mac/helpdesk-agent/internal/seed"
+	"github.com/mac/helpdesk-agent/internal/store"
+	"github.com/mac/helpdesk-agent/internal/ticket"
 )
 
 // runServe 启动 HTTP 服务。
@@ -110,7 +110,7 @@ func runServe(args []string) error {
 		IdleTimeout:       120 * time.Second,
 	}
 
-	fmt.Printf("agentdesk 已启动\n")
+	fmt.Printf("helpdesk-agent 已启动\n")
 	fmt.Printf("  监听地址  http://localhost%s\n", *addr)
 	fmt.Printf("  模型模式  %s\n", mode)
 	fmt.Printf("  端点\n")

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mac/agentdesk/internal/domain"
+	"github.com/mac/helpdesk-agent/internal/domain"
 )
 
 // approx 比较浮点数，容忍浮点累加误差。

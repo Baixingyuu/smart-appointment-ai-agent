@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/mac/agentdesk/internal/assign"
-	"github.com/mac/agentdesk/internal/domain"
+	"github.com/mac/helpdesk-agent/internal/assign"
+	"github.com/mac/helpdesk-agent/internal/domain"
 )
 
 // datasetPath 返回基础评测集路径。

@@ -9,11 +9,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mac/agentdesk/internal/classify"
-	"github.com/mac/agentdesk/internal/domain"
-	"github.com/mac/agentdesk/internal/eval"
-	"github.com/mac/agentdesk/internal/evalrun"
-	"github.com/mac/agentdesk/internal/llm"
+	"github.com/mac/helpdesk-agent/internal/classify"
+	"github.com/mac/helpdesk-agent/internal/domain"
+	"github.com/mac/helpdesk-agent/internal/eval"
+	"github.com/mac/helpdesk-agent/internal/evalrun"
+	"github.com/mac/helpdesk-agent/internal/llm"
 )
 
 // runEvalIntent 跑意图分类评测。

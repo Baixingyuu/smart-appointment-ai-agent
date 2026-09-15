@@ -1,4 +1,4 @@
-# agentdesk
+# helpdesk-agent
 
 以「评测驱动」的客服工单系统。技术栈 Go，重心在**可复现的评测**而非模型本身。
 
@@ -370,7 +370,7 @@ make verify-data
 ## 代码结构
 
 ```
-cmd/agentdesk/          CLI（serve / demo / eval-assign / eval-trajectory）
+cmd/helpdesk-agent/          CLI（serve / demo / eval-assign / eval-trajectory）
 internal/domain/        领域模型、技能集合、工单状态机、确认中断、确认解析
 internal/assign/        确定性派单器（纯函数，无 I/O）
 internal/rag/           检索 + 证据充分性判定 + 失败归因；两种向量化实现
@@ -423,7 +423,7 @@ eval/verify_datasets.py     独立金标校验
 
 ## 下一步
 
-一期剩余工作见 `../agent-desk/docs/PHASE_ROADMAP.md`：
+后续规划见 [docs/PHASE_ROADMAP.md](docs/PHASE_ROADMAP.md)：
 
 - 会话与消息模型（当前 `ConversationID` 由调用方直接传入）
 - HTTP 接口层（当前为 CLI 驱动）

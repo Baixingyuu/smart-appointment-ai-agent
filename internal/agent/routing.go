@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mac/agentdesk/internal/domain"
-	"github.com/mac/agentdesk/internal/llm"
+	"github.com/mac/helpdesk-agent/internal/domain"
+	"github.com/mac/helpdesk-agent/internal/llm"
 )
 
 // routeAndShortCircuit 做意图路由，并在意图无需工具循环时直接给出回复。

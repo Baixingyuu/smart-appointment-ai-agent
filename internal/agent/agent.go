@@ -14,12 +14,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mac/agentdesk/internal/domain"
-	"github.com/mac/agentdesk/internal/llm"
-	"github.com/mac/agentdesk/internal/rag"
-	"github.com/mac/agentdesk/internal/store"
-	"github.com/mac/agentdesk/internal/ticket"
-	"github.com/mac/agentdesk/internal/tooling"
+	"github.com/mac/helpdesk-agent/internal/domain"
+	"github.com/mac/helpdesk-agent/internal/llm"
+	"github.com/mac/helpdesk-agent/internal/rag"
+	"github.com/mac/helpdesk-agent/internal/store"
+	"github.com/mac/helpdesk-agent/internal/ticket"
+	"github.com/mac/helpdesk-agent/internal/tooling"
 )
 
 // 工具编码。

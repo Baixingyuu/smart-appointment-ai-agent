@@ -16,7 +16,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mac/agentdesk/internal/domain"
+	"github.com/mac/helpdesk-agent/internal/domain"
 )
 
 // Weights 三项评分的权重。

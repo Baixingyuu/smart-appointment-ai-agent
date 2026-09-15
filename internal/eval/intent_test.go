@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mac/agentdesk/internal/domain"
+	"github.com/mac/helpdesk-agent/internal/domain"
 )
 
 // stubClassifier 按文本返回预置意图，用于独立验证评测框架。

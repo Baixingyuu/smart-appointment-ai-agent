@@ -6,14 +6,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mac/agentdesk/internal/agent"
-	"github.com/mac/agentdesk/internal/assign"
-	"github.com/mac/agentdesk/internal/classify"
-	"github.com/mac/agentdesk/internal/llm"
-	"github.com/mac/agentdesk/internal/rag"
-	"github.com/mac/agentdesk/internal/seed"
-	"github.com/mac/agentdesk/internal/store"
-	"github.com/mac/agentdesk/internal/ticket"
+	"github.com/mac/helpdesk-agent/internal/agent"
+	"github.com/mac/helpdesk-agent/internal/assign"
+	"github.com/mac/helpdesk-agent/internal/classify"
+	"github.com/mac/helpdesk-agent/internal/llm"
+	"github.com/mac/helpdesk-agent/internal/rag"
+	"github.com/mac/helpdesk-agent/internal/seed"
+	"github.com/mac/helpdesk-agent/internal/store"
+	"github.com/mac/helpdesk-agent/internal/ticket"
 )
 
 // TestLiveAgentAgainstDeepSeek 用真实模型跑一遍完整链路。

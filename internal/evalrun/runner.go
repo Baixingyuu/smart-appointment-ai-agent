@@ -8,10 +8,10 @@ package evalrun
 import (
 	"context"
 
-	"github.com/mac/agentdesk/internal/agent"
-	"github.com/mac/agentdesk/internal/classify"
-	"github.com/mac/agentdesk/internal/eval"
-	"github.com/mac/agentdesk/internal/rag"
+	"github.com/mac/helpdesk-agent/internal/agent"
+	"github.com/mac/helpdesk-agent/internal/classify"
+	"github.com/mac/helpdesk-agent/internal/eval"
+	"github.com/mac/helpdesk-agent/internal/rag"
 )
 
 // AgentRunner 用真实 Agent 执行轨迹评测用例。

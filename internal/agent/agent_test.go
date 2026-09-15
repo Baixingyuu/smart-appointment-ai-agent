@@ -8,14 +8,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mac/agentdesk/internal/assign"
-	"github.com/mac/agentdesk/internal/domain"
-	"github.com/mac/agentdesk/internal/llm"
-	"github.com/mac/agentdesk/internal/rag"
-	"github.com/mac/agentdesk/internal/seed"
-	"github.com/mac/agentdesk/internal/store"
-	"github.com/mac/agentdesk/internal/ticket"
-	"github.com/mac/agentdesk/internal/tooling"
+	"github.com/mac/helpdesk-agent/internal/assign"
+	"github.com/mac/helpdesk-agent/internal/domain"
+	"github.com/mac/helpdesk-agent/internal/llm"
+	"github.com/mac/helpdesk-agent/internal/rag"
+	"github.com/mac/helpdesk-agent/internal/seed"
+	"github.com/mac/helpdesk-agent/internal/store"
+	"github.com/mac/helpdesk-agent/internal/ticket"
+	"github.com/mac/helpdesk-agent/internal/tooling"
 )
 
 // fakeModel 是按脚本回放的假模型。

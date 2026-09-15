@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/mac/agentdesk/internal/llm"
+	"github.com/mac/helpdesk-agent/internal/llm"
 )
 
 // TestFixedPromptOverheadBudget 把固定 prompt 开销锁进测试。

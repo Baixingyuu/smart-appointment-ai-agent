@@ -3,7 +3,7 @@
 本项目评测体系的完整说明。**焦点是 agent 层**——即「系统做了哪些决策、这些决策对不对」，
 而不是「回答文本好不好」。文本质量与检索质量属于 RAG 评测，见第 6 节。
 
-- 实现位置：`internal/eval/`（框架）、`cmd/agentdesk/eval_*.go`（运行入口）
+- 实现位置：`internal/eval/`（框架）、`cmd/helpdesk-agent/eval_*.go`（运行入口）
 - 数据集：`eval/datasets/`
 - 文档状态：一期完成时的实现；二期扩展项在文中标注
 

@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mac/agentdesk/internal/domain"
+	"github.com/mac/helpdesk-agent/internal/domain"
 )
 
 // IntentCase 一条意图评测样本。

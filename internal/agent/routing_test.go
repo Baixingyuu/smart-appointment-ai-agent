@@ -4,8 +4,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/mac/agentdesk/internal/domain"
-	"github.com/mac/agentdesk/internal/llm"
+	"github.com/mac/helpdesk-agent/internal/domain"
+	"github.com/mac/helpdesk-agent/internal/llm"
 )
 
 // stubClassifier 按文本返回预置意图。

@@ -16,10 +16,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mac/agentdesk/internal/conversation"
-	"github.com/mac/agentdesk/internal/domain"
-	"github.com/mac/agentdesk/internal/store"
-	"github.com/mac/agentdesk/internal/ticket"
+	"github.com/mac/helpdesk-agent/internal/conversation"
+	"github.com/mac/helpdesk-agent/internal/domain"
+	"github.com/mac/helpdesk-agent/internal/store"
+	"github.com/mac/helpdesk-agent/internal/ticket"
 )
 
 // Server 组装 HTTP 接口。

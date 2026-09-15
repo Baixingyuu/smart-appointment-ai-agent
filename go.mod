@@ -1,4 +1,4 @@
-module github.com/mac/agentdesk
+module github.com/mac/helpdesk-agent
 
 go 1.27.1
 

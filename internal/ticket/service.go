@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mac/agentdesk/internal/assign"
-	"github.com/mac/agentdesk/internal/domain"
-	"github.com/mac/agentdesk/internal/store"
+	"github.com/mac/helpdesk-agent/internal/assign"
+	"github.com/mac/helpdesk-agent/internal/domain"
+	"github.com/mac/helpdesk-agent/internal/store"
 )
 
 // Service 工单业务服务。

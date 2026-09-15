@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mac/agentdesk/internal/domain"
+	"github.com/mac/helpdesk-agent/internal/domain"
 )
 
 // ErrNotFound 表示目标对象不存在。
