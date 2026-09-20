@@ -1,0 +1,207 @@
+{
+  "version": 1,
+  "description": "真实 IT 工单语料抽样（来源：GitHub NajaChandran/IT-Helpdesk-Analysis 的 all_tickets_processed_improved_v3.csv，47,837 条真实工单，8 个类别）。用途是**行为观测**而非打分：真实工单没有金标，因此本数据集不参与任何通过率计算，只回答一个问题——系统在分布外（英文、真实措辞、语义被上游脱敏）的输入上会怎么表现。注意：原始文本中的技术名词已被上游脱敏（icon 等占位符），语义不完整。",
+  "source": "NajaChandran/IT-Helpdesk-Analysis",
+  "cases": [
+    {
+      "id": "rt-0101",
+      "topicGroup": "Hardware",
+      "text": "received block sender tuesday received hello please thank technical consultant pm right bubbling top busy appreciate thoughts representative how works want connect find suits calendar"
+    },
+    {
+      "id": "rt-0102",
+      "topicGroup": "Hardware",
+      "text": "bucharest replacement for the protection case screen protection foil for phone replacement protection screen protection foil phone hello replacement protection screen protection foil phone old broken thank head"
+    },
+    {
+      "id": "rt-0103",
+      "topicGroup": "Hardware",
+      "text": "access survey gizmo pm survey gizmo hello survey gizmo va pm re catch re plan tech hey pot ti ale la ca ti ale also let pm catch re plan tech hello pretty la quiz se survey gizmo cum ca idea la quiz va embedded quiz user si survey gizmo merci"
+    },
+    {
+      "id": "rt-0104",
+      "topicGroup": "Hardware",
+      "text": "temporary reallocation of monitor from to friday pm reallocation monitor hello dear please take note monitor assigned temporarily reallocated agreed test lead thank best regards senior tester"
+    },
+    {
+      "id": "rt-0105",
+      "topicGroup": "Hardware",
+      "text": "flickering display monitor sent friday monitor ca flicker lead"
+    },
+    {
+      "id": "rt-0201",
+      "topicGroup": "HR Support",
+      "text": "leaver ad perform centre tuesday pm leavers hi leavers termination effectively attaching leaver forms best regards"
+    },
+    {
+      "id": "rt-0202",
+      "topicGroup": "HR Support",
+      "text": "internal transfer ad tuesday re transfer architecture discipline hello please find attached transfer form please note changes made complete rest details remains same fill transfer form changes updated thank administration officer"
+    },
+    {
+      "id": "rt-0203",
+      "topicGroup": "HR Support",
+      "text": "change location loc software tester prima mea la maine cum face transfer loc ca va"
+    },
+    {
+      "id": "rt-0204",
+      "topicGroup": "HR Support",
+      "text": "amend employee due to be leaving announcement notifications tuesday pm re leaver thank kind regards tuesday pm re leaver hi has added due leaving announcement leaver please let further assistance needed kind regards analyst re leaver thanks please add due leaving announcement kind regards tuesday pm re leaver re due leaving announcement attached which well too find example add add said kind regards analyst re leaver hi please maybe thank tuesday pm re leaver hi please note kind leavers too added kind regards analyst leaver hi guys possible add leavers example thank friday pm leaver due leaving details given reason leaving resignation holiday leave balance job title senior consultant please review position needs vacancy posted regards note mailbox receive messages"
+    },
+    {
+      "id": "rt-0205",
+      "topicGroup": "HR Support",
+      "text": "provide access to project from re directory dear please provide next persons regards senior tester"
+    },
+    {
+      "id": "rt-0301",
+      "topicGroup": "Access",
+      "text": "access to july pm hi administrator location where electronic copies contracts kept told please allow user location please additional change thanks"
+    },
+    {
+      "id": "rt-0302",
+      "topicGroup": "Access",
+      "text": "pass pass hi pass activated thanks"
+    },
+    {
+      "id": "rt-0303",
+      "topicGroup": "Access",
+      "text": "internal audit user list pm re user hello please assign thanks engineer user hi please active accounts order compare leavers thanks"
+    },
+    {
+      "id": "rt-0304",
+      "topicGroup": "Access",
+      "text": "access for and remove access for maxim on pm user updated left dear help please granting person name code also rights left updated please find attached thank kind regards"
+    },
+    {
+      "id": "rt-0305",
+      "topicGroup": "Access",
+      "text": "access control card access issue access control card access issue hi please provide access for building entrance for card best regards infrastructure engineering lead"
+    },
+    {
+      "id": "rt-0401",
+      "topicGroup": "Miscellaneous",
+      "text": "add to tuesday pm add dear please add thank head id"
+    },
+    {
+      "id": "rt-0402",
+      "topicGroup": "Miscellaneous",
+      "text": "change of discipline for re change discipline hello please find attached transfer form thank administration officer pm change discipline hello please help changing discipline details job title tester date change possible otherwise possible grade salary change remains change best regards analyst"
+    },
+    {
+      "id": "rt-0403",
+      "topicGroup": "Miscellaneous",
+      "text": "change pm for project change pm hi please change pm pm please change owner regards"
+    },
+    {
+      "id": "rt-0404",
+      "topicGroup": "Miscellaneous",
+      "text": "new list work for friday july work hi please create work also please add thank officer floor blvd district"
+    },
+    {
+      "id": "rt-0405",
+      "topicGroup": "Miscellaneous",
+      "text": "period close activities period close activities hi please proceed activity close write forecast period budget final thanks planning analyst"
+    },
+    {
+      "id": "rt-0501",
+      "topicGroup": "Storage",
+      "text": "access request for a list or library november library requesting library links library manage setting library"
+    },
+    {
+      "id": "rt-0502",
+      "topicGroup": "Storage",
+      "text": "wants to access it services wants dear took over role please thank accept decline requests"
+    },
+    {
+      "id": "rt-0503",
+      "topicGroup": "Storage",
+      "text": "exclude from mailbox exclude mailbox hi please mailbox thank officer"
+    },
+    {
+      "id": "rt-0504",
+      "topicGroup": "Storage",
+      "text": "wants to share people with belgrade bod friday march wants share want share accept decline friday march wants share want share accept decline friday march wants share want share accept decline friday march wants share want share accept decline friday march wants share want share accept decline friday march wants share want share accept decline friday march wants share want share accept decline friday march wants share want share accept decline friday march wants share want share accept decline friday march wants share want share accept decline friday march wants share want share accept decline friday march wants share want share accept decline"
+    },
+    {
+      "id": "rt-0505",
+      "topicGroup": "Storage",
+      "text": "wants to access documents wednesday december wants accept decline"
+    },
+    {
+      "id": "rt-0601",
+      "topicGroup": "Purchase",
+      "text": "new purchase po wednesday pm purchase po dear purchased sheet tray stand please log allocation please take consideration mandatory receipts section order receive item ordered how video kind regards administrator"
+    },
+    {
+      "id": "rt-0602",
+      "topicGroup": "Purchase",
+      "text": "new purchase po purchase po dear purchased cab ace cord right please log allocation kind regards administrator"
+    },
+    {
+      "id": "rt-0603",
+      "topicGroup": "Purchase",
+      "text": "pm hi folks pc elite has requested by please log installation by thanks administrator phone"
+    },
+    {
+      "id": "rt-0604",
+      "topicGroup": "Purchase",
+      "text": "undeliverable messages tuesday december pm undeliverable messages hi please assist finding out receive undeliverable messages his pal pal thanks tuesday december pm undeliverable backlog refinement has failed these groups pal entered found please recipient problem continues please"
+    },
+    {
+      "id": "rt-0605",
+      "topicGroup": "Purchase",
+      "text": "new purchase po purchase po dear purchased received items lite updated include device under user name link please add allocation device thanks after receive item please take consideration mandatory receipts section order receive item ordered how video link please receipt number item needed processed kind regards administrator"
+    },
+    {
+      "id": "rt-0701",
+      "topicGroup": "Internal Project",
+      "text": "access to client managers input known pipeline wednesday july pm urgent importance high hi please client input known pipeline thank best regards programme portfolio officer"
+    },
+    {
+      "id": "rt-0702",
+      "topicGroup": "Internal Project",
+      "text": "new oracle accounts accounts dear please ask create attached form code similar ones requested by thank program upcoming leave wednesday december pm re accounts peer iron mountain costs etc canada similar think code canada well resale buy things additional storage charge catalogue rate today crc contains costs canada regards client upcoming leave december please refer section entities december re accounts hi canada mainly booked resales code wrong program upcoming leave wednesday december pm re accounts hi thank bellow confirmation about canada thank administrator wednesday december pm re accounts thanks includes well costs historically raised directly other words costs hit regards wednesday december accounts hi discussed earlier hereby official note raised purchased against these codes requires licenses then provide renewals contracts licenses running please against two codes where approver confirmation device license renewed come usual via thanks december please existing accounts program upcoming leave"
+    },
+    {
+      "id": "rt-0703",
+      "topicGroup": "Internal Project",
+      "text": "project manager setting friday march pm setting hi please his profile currently blank best regards head"
+    },
+    {
+      "id": "rt-0704",
+      "topicGroup": "Internal Project",
+      "text": "pas project code permission thursday pm re code permission approved thanks code permission hi forecast please questions please come back thanks technical programme planned holiday july return mob"
+    },
+    {
+      "id": "rt-0705",
+      "topicGroup": "Internal Project",
+      "text": "new projects setup management oracle setup hi please create code per enclosed spreadsheets raised seems issues moment log properly regards upcoming public holidays st floor blvd district"
+    },
+    {
+      "id": "rt-0801",
+      "topicGroup": "Administrative rights",
+      "text": "hr upgrade sent thursday july upgrade hello could you please open ticket upgrade tool version best regards engineer managed en information confidential be legally privileged intended solely for addressee any opinions expressed mine necessarily represent opinions"
+    },
+    {
+      "id": "rt-0802",
+      "topicGroup": "Administrative rights",
+      "text": "issues sent tuesday october issues hi could you please investigate below issue context we had issues yesterday sessions dropped quite often sent below impacted daily test progress test engineers today we have experienced again similar issues morning please advise thank you sent october hi worst round trip countries with users connecting currently appears be issue only almost times bad anywhere much better engineer science road cambridge we kingdom connect with any attachments confidential intended only for addressee be privileged if you have received error please notify immediately delete any content does relate personal or endorsed by does accept responsibility for viruses or any loss or damage arising transmission or access conduct authority conduct authority conduct authority registered building by conduct authority under regulations for provision regulated by conduct authority for activities registered amsterdam holds licence included kept by registration can be consulted through logo any brand names marks"
+    },
+    {
+      "id": "rt-0803",
+      "topicGroup": "Administrative rights",
+      "text": "windows upgrade error re problem installing win any updates senior developer en sent wednesday re problem installing win hi any updates or acknowledgements for issue below thanks senior developer en sent tuesday problem installing win hi please error below getting when try install win thanks senior developer en"
+    },
+    {
+      "id": "rt-0804",
+      "topicGroup": "Administrative rights",
+      "text": "outlook cannot remember credentials week or two ago we started having problems with issue remember credentials prompt every couple minutes re enter matter if provided credentials valid also happens our out sync we prompted check by problem we contacted said everything their side was also confirmed by our colleagues problem because we receiving important nor our sent"
+    },
+    {
+      "id": "rt-0805",
+      "topicGroup": "Administrative rights",
+      "text": "error installing windows error installing tried upgrade error what next"
+    }
+  ]
+}

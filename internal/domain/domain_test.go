@@ -36,6 +36,20 @@ func TestParseConfirmationDecision(t *testing.T) {
 		{"不用了，确认吧", DecisionCancel},
 		{"算了不用建了", DecisionCancel},
 
+		// 拟人化改写后的评测集实际表述（eval/datasets/trajectory.json）。
+		// 数据集与解析器在此双向锁定：改任何一侧都必须重跑这里，
+		// 否则消息改写可能悄悄破坏确认/取消解析。
+		{"嗯，确认建吧，越快越好", DecisionConfirm},
+		{"好的，确认，麻烦尽快", DecisionConfirm},
+		{"好的，确认，尽快安排人看下", DecisionConfirm},
+		{"嗯，确认，就这样", DecisionConfirm},
+		{"确认，麻烦加急处理", DecisionConfirm},
+		{"好的，确认登记，端口的事我照文档先试试", DecisionConfirm},
+		{"算了，先不建了，我再看看", DecisionCancel},
+		{"不用了，算了吧，我等会儿再说", DecisionCancel},
+		{"算了，先不建了，我再自己排查一下", DecisionCancel},
+		{"先不用建了，我自己重启了一下，好像恢复了", DecisionCancel},
+
 		// 语义不明：不得猜测，交由编排层重新提问。
 		{"", DecisionUnknown},
 		{"   ", DecisionUnknown},

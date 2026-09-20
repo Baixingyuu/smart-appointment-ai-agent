@@ -211,6 +211,17 @@ func (m *OpenAIModel) ChatWithTools(ctx context.Context, req ToolRequest) (*Resp
 			Arguments: function.Function.Arguments,
 		})
 	}
+
+	// 空响应必须报错，不能当正常回复返回。
+	//
+	// 实测踩过：推理服务异常时（如上下文溢出、模型进程卡死）会返回
+	// content 为空、无 tool_calls、usage 全 0 的响应。若按正常响应处理，
+	// Agent 会把它当作「最终回复」，评测静默记 0 分——一整轮 live 评测
+	// 的失败会被误读成「模型能力差」，而真正原因是服务故障。
+	// 报错后由调用方的重试/告警机制接手。
+	if response.Content == "" && len(response.ToolCalls) == 0 && response.ReasoningContent == "" {
+		return nil, errors.New("模型返回空响应（无内容、无工具调用、无思考内容），疑似推理服务异常")
+	}
 	return response, nil
 }
 
@@ -218,9 +229,13 @@ func (m *OpenAIModel) applySampling(params *openai.ChatCompletionNewParams) {
 	if m.config.MaxTokens > 0 {
 		params.MaxCompletionTokens = openai.Int(m.config.MaxTokens)
 	}
-	if m.config.Temperature > 0 {
-		params.Temperature = openai.Float(m.config.Temperature)
-	}
+	// 温度始终显式下发，缺省为 0。
+	//
+	// 此前的实现只在 Temperature > 0 时才发送该字段，缺省走服务端默认值，
+	// 同一份 live 评测在不同服务商/不同默认配置下不可比，可复现性上限被锁死。
+	// 统一为 0（尽量确定性）是评测基线的前提；个别拒绝 temperature 参数的
+	// 模型再按需放开。
+	params.Temperature = openai.Float(m.config.Temperature)
 }
 
 func (m *OpenAIModel) buildTools(schemas []ToolSchema) []openai.ChatCompletionToolUnionParam {
