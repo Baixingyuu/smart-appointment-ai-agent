@@ -1,0 +1,343 @@
+package main
+
+import (
+	"bufio"
+	"context"
+	"encoding/json"
+	"flag"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/mac/helpdesk-agent/internal/agent"
+	"github.com/mac/helpdesk-agent/internal/assign"
+	"github.com/mac/helpdesk-agent/internal/classify"
+	"github.com/mac/helpdesk-agent/internal/conversation"
+	"github.com/mac/helpdesk-agent/internal/evalrun"
+	"github.com/mac/helpdesk-agent/internal/rag"
+	"github.com/mac/helpdesk-agent/internal/seed"
+	"github.com/mac/helpdesk-agent/internal/store"
+	"github.com/mac/helpdesk-agent/internal/ticket"
+)
+
+// turnSample 一条人工测试样本。
+//
+// 只存回复文本无法定位缺陷，因此每回合连同归因字段一起落盘：
+// 意图、是否短路、逐轮 token、每个工具调用的状态与拒绝原因、是否发起确认、是否建单。
+// 事后分析靠这些字段做归因，不靠回忆。
+type turnSample struct {
+	At             string              `json:"at"`
+	ConversationID int64               `json:"conversationId"`
+	Turn           int                 `json:"turn"`
+	UserMessage    string              `json:"userMessage"`
+	Reply          string              `json:"reply"`
+	Intent         string              `json:"intent,omitempty"`
+	ShortCircuit   bool                `json:"shortCircuit,omitempty"`
+	Interrupted    bool                `json:"interrupted,omitempty"`
+	TicketID       int64               `json:"ticketId,omitempty"`
+	Rounds         int                 `json:"rounds"`
+	PromptTokens   int                 `json:"promptTokens"`
+	TokenTotal     int                 `json:"tokenTotal"`
+	DurationMS     int64               `json:"durationMs"`
+	Tools          []string            `json:"tools,omitempty"`
+	Rejections     []string            `json:"rejections,omitempty"`
+	RagSufficient  bool                `json:"ragSufficient,omitempty"`
+	RagReason      string              `json:"ragReason,omitempty"`
+	RagRounds      int                 `json:"ragRounds,omitempty"`
+	RoundUsage     []agent.RoundRecord `json:"roundUsage,omitempty"`
+	Error          string              `json:"error,omitempty"`
+}
+
+type sessionMeta struct {
+	Kind      string `json:"kind"`
+	ModelMode string `json:"modelMode"`
+	Model     string `json:"model,omitempty"`
+	Started   string `json:"started"`
+}
+
+// runChat 提供人工测试用的命令行对话窗口，并把每回合轨迹落成可复核样本。
+//
+// 与 serve 走同一条装配路径（同一套提示词、路由分类器、检索器），
+// 目的是让人工发现的缺陷能直接落到评测口径上，而不是「演示环境里才会出现的问题」。
+//
+// 边界：-offline 下脚本模型不理解输入，归因字段（意图/轮次/token）没有解释力，
+// 该模式只用于验证窗口与样本落盘链路。
+func runChat(args []string) error {
+	fs := flag.NewFlagSet("chat", flag.ContinueOnError)
+	offline := fs.Bool("offline", false, "使用离线脚本模型（无需 API Key）")
+	baseURL := fs.String("base-url", envOr("LLM_BASE_URL", "https://api.deepseek.com/v1"), "模型服务地址（OpenAI-compatible）")
+	apiKey := fs.String("api-key", envOr("LLM_API_KEY", ""), "模型 API Key（或用 LLM_API_KEY）")
+	modelName := fs.String("model", envOr("LLM_MODEL", "deepseek-flash"), "模型名称")
+	logPath := fs.String("log", "", "样本 JSONL 路径（默认 eval/samples/chat-<时间>.jsonl）")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	chatModel, embedder, mode, err := buildModel(*offline, llmConfig{
+		baseURL: *baseURL, apiKey: *apiKey, model: *modelName,
+	})
+	if err != nil {
+		return err
+	}
+
+	st := store.NewMemory()
+	if err := seed.Load(st); err != nil {
+		return err
+	}
+	tickets := ticket.New(st, assign.New(assign.DefaultWeights()))
+
+	retriever := seed.NewBM25Retriever(rag.DefaultOptions())
+	if embedder != nil {
+		retriever = rag.New(seed.KnowledgeChunks(), embedder, rag.DefaultOptions())
+	}
+	ag, err := agent.New(chatModel, st, retriever, tickets, agent.DefaultConfig(),
+		agent.WithClassifier(evalrun.NewClassifierRunner(classify.New(chatModel))))
+	if err != nil {
+		return err
+	}
+
+	var lastTurn *agent.TurnResult
+	executor := conversation.TurnExecutorFunc(func(conversationID int64, message string) (conversation.TurnOutcome, error) {
+		result, err := ag.Run(context.Background(), agent.TurnInput{
+			ConversationID: conversationID,
+			UserMessage:    message,
+		})
+		if err != nil {
+			return conversation.TurnOutcome{}, err
+		}
+		lastTurn = result
+		return conversation.TurnOutcome{
+			Reply:       result.Reply,
+			Interrupted: result.Interrupted,
+			TicketID:    result.TicketID,
+		}, nil
+	})
+	conversations := conversation.New(st, executor)
+
+	samples, err := openSampleLog(*logPath, mode, *modelName, *offline)
+	if err != nil {
+		return err
+	}
+	defer samples.Close()
+	encoder := json.NewEncoder(samples)
+
+	fmt.Printf("helpdesk-agent 人工对话窗口\n")
+	fmt.Printf("  模型模式  %s\n", mode)
+	if !*offline {
+		fmt.Printf("  服务地址  %s\n", *baseURL)
+		fmt.Printf("  模型      %s\n", *modelName)
+	}
+	fmt.Printf("  样本      %s\n", samples.Name())
+	fmt.Printf("  指令      /new 新会话  /trace 上回合归因  /tickets 工单  /help 说明  /quit 退出\n")
+	if !*offline {
+		fmt.Printf("  提示      本地模型用 make chat-local（qwen3:8b；勿用 8k/16k 变体，会撑爆显存）\n")
+	}
+
+	scanner := bufio.NewScanner(os.Stdin)
+	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
+	conversationID, err := startConversation(conversations)
+	if err != nil {
+		return err
+	}
+	turn := 0
+
+	for {
+		fmt.Printf("\n你 > ")
+		if !scanner.Scan() {
+			fmt.Println()
+			return scanner.Err()
+		}
+		line := strings.TrimSpace(scanner.Text())
+		switch {
+		case line == "":
+			continue
+		case strings.HasPrefix(line, "/"):
+			quit, cmdErr := handleCommand(line, conversations, st, &conversationID, &turn, lastTurn)
+			if cmdErr != nil {
+				fmt.Printf("  ! %v\n", cmdErr)
+			}
+			if quit {
+				return nil
+			}
+			continue
+		}
+
+		turn++
+		startedAt := time.Now()
+		result, err := conversations.Send(conversationID, line, fmt.Sprintf("chat-%d-%d", conversationID, turn))
+		sample := turnSample{
+			At:             startedAt.Format(time.RFC3339),
+			ConversationID: conversationID,
+			Turn:           turn,
+			UserMessage:    line,
+			DurationMS:     time.Since(startedAt).Milliseconds(),
+		}
+		if err != nil {
+			sample.Error = err.Error()
+			fmt.Printf("助手 > （本轮失败）%v\n", err)
+		} else if result.Turn != nil {
+			sample.Reply = result.Turn.Reply
+			if lastTurn != nil {
+				fillFromTurn(&sample, lastTurn)
+			}
+			sample.Interrupted = result.Turn.Interrupted
+			sample.TicketID = result.Turn.TicketID
+			printReply(&sample)
+		}
+		if err := encoder.Encode(sample); err != nil {
+			fmt.Printf("  ! 样本写入失败: %v\n", err)
+		}
+	}
+}
+
+func fillFromTurn(sample *turnSample, result *agent.TurnResult) {
+	sample.Intent = string(result.Intent)
+	sample.ShortCircuit = result.ShortCircuited
+	sample.Rounds = result.Rounds
+	sample.PromptTokens = result.Usage.PromptTokens
+	sample.TokenTotal = result.Usage.Total()
+	sample.RoundUsage = result.RoundRecords
+	if result.RAGResult != nil {
+		sample.RagSufficient = result.RAGResult.Gate.Sufficient
+		sample.RagReason = string(result.RAGResult.Gate.Reason)
+		sample.RagRounds = result.RAGResult.Rounds
+	}
+	for _, call := range result.ToolCalls {
+		sample.Tools = append(sample.Tools, call.Code)
+		if call.Status != "completed" {
+			sample.Rejections = append(sample.Rejections, fmt.Sprintf("%s:%s", call.Code, call.ErrorKind))
+		}
+	}
+}
+
+func printReply(sample *turnSample) {
+	prefix := "助手 > "
+	if sample.Interrupted {
+		prefix = "助手 > [等待确认] "
+	}
+	fmt.Printf("%s%s\n", prefix, sample.Reply)
+	if sample.TicketID > 0 {
+		fmt.Printf("       工单 #%d 已创建\n", sample.TicketID)
+	}
+	fmt.Printf("       归因: 意图=%s 轮次=%d 工具=%s token=%d 耗时=%dms\n",
+		orNone(sample.Intent), sample.Rounds, orNone(strings.Join(sample.Tools, ",")),
+		sample.TokenTotal, sample.DurationMS)
+	if len(sample.Rejections) > 0 {
+		fmt.Printf("       被拒调用: %s\n", strings.Join(sample.Rejections, " "))
+	}
+}
+
+func handleCommand(line string, conversations *conversation.Service, st store.Store,
+	conversationID *int64, turn *int, lastTurn *agent.TurnResult) (bool, error) {
+	switch strings.Fields(line)[0] {
+	case "/quit", "/exit", "/q":
+		return true, nil
+	case "/help":
+		fmt.Print(chatHelpText)
+	case "/new":
+		id, err := startConversation(conversations)
+		if err != nil {
+			return false, err
+		}
+		*conversationID, *turn = id, 0
+		fmt.Printf("  已开新会话 #%d\n", id)
+	case "/id":
+		fmt.Printf("  当前会话 #%d\n", *conversationID)
+	case "/tickets":
+		listTickets(st)
+	case "/trace":
+		if lastTurn == nil {
+			fmt.Println("  还没有已完成的回合")
+			return false, nil
+		}
+		printTrace(lastTurn)
+	default:
+		return false, fmt.Errorf("未知指令 %s，/help 查看可用指令", line)
+	}
+	return false, nil
+}
+
+func startConversation(conversations *conversation.Service) (int64, error) {
+	created, err := conversations.Start(conversation.StartInput{SourceChannel: "manual-test"})
+	if err != nil {
+		return 0, err
+	}
+	fmt.Printf("  会话 #%d 已开始\n", created.ID)
+	return created.ID, nil
+}
+
+func listTickets(st store.Store) {
+	list := st.ListTickets()
+	if len(list) == 0 {
+		fmt.Println("  暂无工单")
+		return
+	}
+	for _, t := range list {
+		fmt.Printf("  #%d [%s] %s\n", t.ID, t.Status, t.Title)
+	}
+}
+
+func printTrace(result *agent.TurnResult) {
+	fmt.Printf("  意图=%s 短路=%v 轮次=%d token=%d/%d 耗时=%dms\n",
+		orNone(string(result.Intent)), result.ShortCircuited, result.Rounds,
+		result.Usage.PromptTokens, result.Usage.CompletionTokens, result.DurationMS)
+	for _, record := range result.RoundRecords {
+		fmt.Printf("    第 %d 轮  prompt=%d completion=%d 工具=%s\n",
+			record.Round, record.PromptTokens, record.CompletionTokens, orNone(strings.Join(record.Tools, ",")))
+	}
+	for _, call := range result.ToolCalls {
+		fmt.Printf("    调用 %-28s %-9s %dms", call.Code, call.Status, call.DurationMS)
+		if call.ErrorKind != "" {
+			fmt.Printf("  %s", call.ErrorKind)
+		}
+		fmt.Println()
+	}
+	if result.RAGResult != nil {
+		fmt.Printf("    检索 sufficient=%v reason=%s 命中=%d 轮次=%d\n",
+			result.RAGResult.Gate.Sufficient, result.RAGResult.Gate.Reason,
+			len(result.RAGResult.Hits), result.RAGResult.Rounds)
+	}
+}
+
+func openSampleLog(path, mode, modelName string, offline bool) (*os.File, error) {
+	if path == "" {
+		if err := os.MkdirAll("eval/samples", 0o755); err != nil {
+			return nil, err
+		}
+		path = fmt.Sprintf("eval/samples/chat-%s.jsonl", time.Now().Format("20060102-150405"))
+	} else if dir := filepath.Dir(path); dir != "." && dir != "" {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return nil, err
+		}
+	}
+	file, err := os.Create(path)
+	if err != nil {
+		return nil, fmt.Errorf("创建样本文件: %w", err)
+	}
+	meta := sessionMeta{Kind: "session", ModelMode: mode, Started: time.Now().Format(time.RFC3339)}
+	if !offline {
+		meta.Model = modelName
+	}
+	if err := json.NewEncoder(file).Encode(meta); err != nil {
+		_ = file.Close()
+		return nil, err
+	}
+	return file, nil
+}
+
+func orNone(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return "-"
+	}
+	return value
+}
+
+const chatHelpText = `  直接输入文本即为发送给客服助手的消息，可连续多轮。
+  /new      开一个新会话（样本仍在同一个 JSONL 里，按 conversationId 区分）
+  /trace    打印上一回合的逐轮 token、每个工具调用及其状态、检索判定
+  /tickets  列出当前进程里已创建的工单
+  /id       显示当前会话 ID
+  /quit     退出
+`

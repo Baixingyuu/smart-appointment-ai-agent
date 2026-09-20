@@ -14,6 +14,8 @@ help:
 	@echo "  make test        运行全部单元测试"
 	@echo "  make serve       启动 HTTP 服务（需 LLM_API_KEY）"
 	@echo "  make serve-offline  启动 HTTP 服务（离线脚本模型，无需密钥）"
+	@echo "  make chat          人工测试对话窗口（需 LLM_API_KEY，样本落 eval/samples）"
+	@echo "  make chat-local    人工测试对话窗口（本地 qwen3:8b，零成本）"
 	@echo "  make eval        运行指派评测（基础集 + 对抗集）"
 	@echo "  make eval-intent 运行意图路由评测"
 	@echo "  make eval-retrieval 运行检索召回评测"
@@ -83,6 +85,18 @@ eval-trajectory:
 .PHONY: eval-trajectory-local
 eval-trajectory-local:
 	$(GO) run ./cmd/helpdesk-agent eval-trajectory \
+		-base-url http://localhost:11434/v1 -api-key ollama -model qwen3:8b $(ARGS)
+
+.PHONY: chat
+chat:
+	$(GO) run ./cmd/helpdesk-agent chat $(ARGS)
+
+# 人工测试对话窗口（本地 qwen3:8b）。每回合轨迹落 eval/samples/*.jsonl，
+# 含意图/轮次/逐轮 token/工具序列/被拒原因/是否建单，供后续评测与缺陷归因复核。
+# 与 eval-trajectory-local 同一模型口径：4k 默认上下文，勿改用 8k/16k 变体（会撑爆显存）。
+.PHONY: chat-local
+chat-local:
+	$(GO) run ./cmd/helpdesk-agent chat \
 		-base-url http://localhost:11434/v1 -api-key ollama -model qwen3:8b $(ARGS)
 
 # 真实工单观测（非评测：真实数据无金标，不算通过率）。

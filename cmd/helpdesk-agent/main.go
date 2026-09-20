@@ -53,6 +53,11 @@ func main() {
 			fmt.Fprintf(os.Stderr, "错误: %v\n", err)
 			os.Exit(1)
 		}
+	case "chat":
+		if err := runChat(os.Args[2:]); err != nil {
+			fmt.Fprintf(os.Stderr, "错误: %v\n", err)
+			os.Exit(1)
+		}
 	case "demo":
 		if err := runDemo(); err != nil {
 			fmt.Fprintf(os.Stderr, "错误: %v\n", err)
@@ -72,6 +77,7 @@ func usage() {
 
 用法:
   helpdesk-agent serve [选项]         启动 HTTP 服务
+  helpdesk-agent chat [选项]          人工测试对话窗口（每回合轨迹落 JSONL 样本）
   helpdesk-agent demo                 跑一遍完整工单链路（建单/派单/去重/升级/完成）
   helpdesk-agent eval-assign [选项]   运行指派评测
   helpdesk-agent eval-retrieval [选项]  运行检索召回评测
@@ -107,6 +113,16 @@ serve 选项:
   -api-key string     模型 API Key（或用 LLM_API_KEY）
   -model string       模型名称（或用 LLM_MODEL，默认 gpt-4o-mini）
   -embed-base-url / -embed-api-key / -embed-model   向量模型（可选）
+
+chat 选项:
+  -offline            使用离线脚本模型（无需 API Key）
+  -base-url / -api-key / -model   同 serve
+  -log string         样本 JSONL 路径（默认 eval/samples/chat-<时间>.jsonl）
+
+  本地模型示例（8k/16k 变体会撑爆显存，用 qwen3:8b）：
+    helpdesk-agent chat -api-key=ollama -base-url=http://localhost:11434/v1 \
+      -model=qwen3:8b
+    或直接 make chat-local
 
 eval-assign 选项:
   -dataset string   评测集路径，可重复指定（默认同时运行基础集与对抗集）
