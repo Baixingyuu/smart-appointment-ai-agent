@@ -65,11 +65,34 @@ eval-retrieval:
 	$(GO) run ./cmd/helpdesk-agent eval-retrieval $(ARGS)
 
 # 轨迹评测：工具选择/顺序/轮次/越界/成本/延迟
-# 可传 ARGS 注入缺陷以验证评测区分力，例如：
+# 默认离线脚本模式（链路自检）；提供密钥则用真实模型测量能力：
+#   make eval-trajectory ARGS="-api-key=sk-xxx"
+# 可传 ARGS 注入缺陷以验证评测区分力（仅脚本模式）：
 #   make eval-trajectory ARGS="-sabotage=always_write"
 .PHONY: eval-trajectory
 eval-trajectory:
 	$(GO) run ./cmd/helpdesk-agent eval-trajectory $(ARGS)
+
+# 本地 Qwen3-8B（ollama）驱动的 live 轨迹评测——默认测试模型。
+# 一次性准备：ollama pull qwen3:8b（约 5.2GB）
+# 用默认 4k 上下文，不要盲目调大：实测把上下文提到 8k/16k 会让 KV cache 撑爆
+# GPU 显存（日志：kIOGPUCommandBufferCallbackErrorOutOfMemory，Metal backend
+# 进入粘滞错误态后整轮评测全失败），而本项目单请求峰值约 4.6k token，
+# 4k 默认值在多轮用例上实测可完整跑完。显存紧张时重启 ollama 服务即可恢复。
+# temp=0 下结果逐项一致（方差=0），可直接作为回归基线。
+.PHONY: eval-trajectory-local
+eval-trajectory-local:
+	$(GO) run ./cmd/helpdesk-agent eval-trajectory \
+		-base-url http://localhost:11434/v1 -api-key ollama -model qwen3:8b $(ARGS)
+
+# 真实工单观测（非评测：真实数据无金标，不算通过率）。
+# 数据集由真实 IT 工单语料抽样生成：
+#   python3 eval/gen_realtickets.py /path/to/all_tickets_processed_improved_v3.csv
+# 数据来源见 eval/gen_realtickets.py 顶部说明；CSV 不入库。
+.PHONY: eval-realtickets-local
+eval-realtickets-local:
+	$(GO) run ./cmd/helpdesk-agent eval-realtickets \
+		-base-url http://localhost:11434/v1 -api-key ollama -model qwen3:8b $(ARGS)
 
 .PHONY: eval-report
 eval-report:

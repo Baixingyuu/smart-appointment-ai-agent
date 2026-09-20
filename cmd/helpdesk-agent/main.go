@@ -43,6 +43,11 @@ func main() {
 			fmt.Fprintf(os.Stderr, "错误: %v\n", err)
 			os.Exit(1)
 		}
+	case "eval-realtickets":
+		if err := runEvalRealTickets(os.Args[2:]); err != nil {
+			fmt.Fprintf(os.Stderr, "错误: %v\n", err)
+			os.Exit(1)
+		}
 	case "serve":
 		if err := runServe(os.Args[2:]); err != nil {
 			fmt.Fprintf(os.Stderr, "错误: %v\n", err)
@@ -72,6 +77,7 @@ func usage() {
   helpdesk-agent eval-retrieval [选项]  运行检索召回评测
   helpdesk-agent eval-intent [选项]   运行意图分类评测
   helpdesk-agent eval-trajectory [选项]  运行轨迹评测（工具选择/轮次/成本/延迟）
+  helpdesk-agent eval-realtickets [选项] 真实工单观测（无金标，只记录行为分布）
 
 eval-retrieval 选项:
   -dataset string   检索评测集路径（默认 eval/datasets/retrieval.json）
@@ -87,8 +93,12 @@ eval-intent 选项:
 eval-trajectory 选项:
   -dataset string   轨迹评测集路径（默认 eval/datasets/trajectory.json）
   -json string      把机读报告写入该路径
-  -sabotage string  人为注入缺陷以验证评测区分力:
+  -sabotage string  人为注入缺陷以验证评测区分力（仅脚本模式）:
                     skip_rag | always_write | extra_rounds | unknown_tool
+  -api-key string   提供后用真实模型驱动评测（或用 LLM_API_KEY），
+                    与 -sabotage 互斥；测量真实工具选择能力
+  -base-url string  模型服务地址（或用 LLM_BASE_URL，默认 DeepSeek 官方）
+  -model string     模型名称（或用 LLM_MODEL，默认 deepseek-flash）
 
 serve 选项:
   -addr string        监听地址（默认 :8080）

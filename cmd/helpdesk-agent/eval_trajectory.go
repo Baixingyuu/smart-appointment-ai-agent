@@ -11,7 +11,9 @@ import (
 
 	"github.com/mac/helpdesk-agent/internal/agent"
 	"github.com/mac/helpdesk-agent/internal/assign"
+	"github.com/mac/helpdesk-agent/internal/classify"
 	"github.com/mac/helpdesk-agent/internal/eval"
+	"github.com/mac/helpdesk-agent/internal/evalrun"
 	"github.com/mac/helpdesk-agent/internal/llm"
 	"github.com/mac/helpdesk-agent/internal/rag"
 	"github.com/mac/helpdesk-agent/internal/seed"
@@ -19,24 +21,41 @@ import (
 	"github.com/mac/helpdesk-agent/internal/ticket"
 )
 
+// liveTurnTimeout 单条消息的执行上限。
+//
+// 真实模型可能长时间挂起（serve 对此设了 180s 写超时），
+// 评测同样必须有界，否则一次网络挂起会让整场评测卡死。
+const liveTurnTimeout = 180 * time.Second
+
 // runEvalTrajectory 跑轨迹评测。
 //
-// 执行方式：先为每条用例独立跑一遍真实 Agent（模型为脚本化假模型），
-// 采集逐轮观测；再由评测框架对这些观测做断言与汇总。
+// 执行方式：先为每条用例独立跑一遍真实 Agent，采集逐轮观测；
+// 再由评测框架对这些观测做断言与汇总。
+//
+// 两种模式，由是否提供 -api-key（或 LLM_API_KEY）决定：
+//   - 脚本化假模型（默认）：照着期望演，指标反映「评测链路与断言是否正确」，
+//     离线可复现，配合 -sabotage 验证评测区分力。
+//   - 真实模型（提供密钥）：同一套断言测量真实模型的工具选择能力，
+//     并注入与 serve 一致的意图分类器，评测对象是「部署形态的系统」。
 //
 // 这样拆分的用意：观测来自真实编排链路（工具治理、确认中断、建单、派单
 // 都真实发生），而断言逻辑与具体实现解耦，可独立测试。
-//
-// 重要局限：脚本化模型是「照着期望演」的，因此本命令的指标反映的是
-// 「评测链路与断言是否正确」，不是「真实模型的工具选择能力」。
 func runEvalTrajectory(args []string) error {
 	fs := flag.NewFlagSet("eval-trajectory", flag.ContinueOnError)
 	datasetPath := fs.String("dataset", defaultTrajectoryDatasetPath(), "轨迹评测集路径")
 	jsonPath := fs.String("json", "", "机读报告输出路径")
 	sabotage := fs.String("sabotage", "", "人为注入缺陷以验证评测区分力："+
 		"skip_rag（跳过检索）/ always_write（总是建单）/ extra_rounds（多余步骤）/ unknown_tool（调用不存在的工具）")
+
+	baseURL := fs.String("base-url", envOr("LLM_BASE_URL", "https://api.deepseek.com/v1"), "模型服务地址")
+	apiKey := fs.String("api-key", envOr("LLM_API_KEY", ""), "提供后用真实模型驱动评测（不提供则为离线脚本模式）")
+	modelName := fs.String("model", envOr("LLM_MODEL", "deepseek-flash"), "模型名称")
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+
+	if *sabotage != "" && *apiKey != "" {
+		return fmt.Errorf("-sabotage 与 -api-key 互斥：sabotage 注入的是脚本级行为，对真实模型无意义")
 	}
 
 	dataset, err := eval.LoadTrajectoryDataset(*datasetPath)
@@ -44,19 +63,36 @@ func runEvalTrajectory(args []string) error {
 		return err
 	}
 
-	runner, err := buildReplayRunner(dataset, *sabotage)
+	var liveModel llm.ChatModel
+	if *apiKey != "" {
+		model, err := llm.New(llm.Config{BaseURL: *baseURL, APIKey: *apiKey, Model: *modelName})
+		if err != nil {
+			return err
+		}
+		liveModel = model
+		fmt.Fprintf(os.Stderr, "模式：真实模型 %s（测量真实工具选择能力，每条用例独立执行，需数分钟）\n\n", *modelName)
+	} else {
+		fmt.Fprintf(os.Stderr, "注意：当前为脚本化假模型，指标反映的是「评测链路与断言是否正确」，\n")
+		fmt.Fprintf(os.Stderr, "而不是真实模型的工具选择能力。测量真实能力请提供 -api-key。\n")
+		if *sabotage != "" {
+			fmt.Fprintf(os.Stderr, "已注入缺陷：%s\n", *sabotage)
+		}
+		fmt.Fprintln(os.Stderr)
+	}
+
+	runner, err := buildReplayRunner(dataset, liveModel, *sabotage)
 	if err != nil {
 		return err
 	}
 
-	fmt.Fprintf(os.Stderr, "注意：本命令由脚本化假模型驱动，指标反映的是「评测链路与断言是否正确」，\n")
-	fmt.Fprintf(os.Stderr, "而不是真实模型的工具选择能力。接入真实模型后同一套评测即可产出对比数据。\n")
-	if *sabotage != "" {
-		fmt.Fprintf(os.Stderr, "已注入缺陷：%s\n", *sabotage)
-	}
-	fmt.Fprintln(os.Stderr)
-
 	report := eval.Run(dataset, runner)
+	if liveModel != nil {
+		report.Mode = "live"
+		report.Model = *modelName
+	} else {
+		report.Mode = "scripted"
+		report.Sabotage = *sabotage
+	}
 	fmt.Print(report.Text())
 
 	if *jsonPath != "" {
@@ -88,15 +124,25 @@ func (r *replayRunner) RunTurn(conversationID int64, _ string) (eval.TurnObserva
 }
 
 // buildReplayRunner 为每条用例真实跑一遍 Agent，采集观测。
-func buildReplayRunner(dataset *eval.TrajectoryDataset, sabotage string) (eval.Runner, error) {
+func buildReplayRunner(dataset *eval.TrajectoryDataset, model llm.ChatModel, sabotage string) (eval.Runner, error) {
 	runner := &replayRunner{
 		observations: make(map[int64][]eval.TurnObservation, len(dataset.Cases)),
 		position:     make(map[int64]int, len(dataset.Cases)),
 	}
 	for _, item := range dataset.Cases {
-		observations, err := executeCase(item, sabotage)
+		observations, err := executeCase(item, model, sabotage)
 		if err != nil {
 			return nil, fmt.Errorf("用例 %s 执行失败: %w", item.ID, err)
+		}
+		if model != nil {
+			// 真实模型一条用例耗时数秒到数十秒，全静默会被误以为卡死。
+			var rounds, tools int
+			for _, obs := range observations {
+				rounds += obs.Rounds
+				tools += len(obs.Tools)
+			}
+			fmt.Fprintf(os.Stderr, "  %s [%s] 完成：%d 条消息 / %d 轮 / %d 次工具调用\n",
+				item.ID, item.Scenario, len(observations), rounds, tools)
 		}
 		runner.observations[item.ConversationID] = observations
 	}
@@ -107,7 +153,18 @@ func buildReplayRunner(dataset *eval.TrajectoryDataset, sabotage string) (eval.R
 //
 // 每条用例使用全新的存储与脚本：用例之间不得共享状态，
 // 否则前一用例建出的工单会改变后一用例的查重结果。
-func executeCase(item eval.TrajectoryCase, sabotage string) ([]eval.TurnObservation, error) {
+// model 非 nil 时用真实模型驱动；传 nil 则用脚本化假模型。
+func executeCase(item eval.TrajectoryCase, model llm.ChatModel, sabotage string) ([]eval.TurnObservation, error) {
+	observations, err := executeCaseOnce(item, model, sabotage)
+	if err != nil && model != nil {
+		// 真实模型存在瞬时失败（限流、网络抖动）。整条用例重跑一次是安全的：
+		// 每条用例使用全新存储，重跑不残留任何副作用。
+		observations, err = executeCaseOnce(item, model, sabotage)
+	}
+	return observations, err
+}
+
+func executeCaseOnce(item eval.TrajectoryCase, model llm.ChatModel, sabotage string) ([]eval.TurnObservation, error) {
 	st := store.NewMemory()
 	if err := seed.Load(st); err != nil {
 		return nil, err
@@ -115,9 +172,20 @@ func executeCase(item eval.TrajectoryCase, sabotage string) ([]eval.TurnObservat
 	tickets := ticket.New(st, assign.New(assign.DefaultWeights()))
 	retriever := seed.NewBM25Retriever(rag.DefaultOptions())
 
+	var chat llm.ChatModel
+	var opts []agent.Option
+	if model != nil {
+		chat = model
+		// 与 serve 的真实模型路径保持一致：路由短路是生产行为的一部分，
+		// 轨迹评测测的是部署形态的系统，不是裸模型。
+		opts = append(opts, agent.WithClassifier(evalrun.NewClassifierRunner(classify.New(model))))
+	} else {
+		chat = &scriptedModel{queue: caseScript(item, sabotage)}
+	}
+
 	// 不注入固定时钟：延迟是评测的四个轴之一，
 	// 固定时钟会让 DurationMS 恒为 0，指标直接失真。
-	ag, err := agent.New(&scriptedModel{queue: caseScript(item, sabotage)}, st, retriever, tickets, agent.DefaultConfig())
+	ag, err := agent.New(chat, st, retriever, tickets, agent.DefaultConfig(), opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -125,10 +193,12 @@ func executeCase(item eval.TrajectoryCase, sabotage string) ([]eval.TurnObservat
 	observations := make([]eval.TurnObservation, 0, len(item.Messages))
 	for _, message := range item.Messages {
 		startedAt := time.Now()
-		result, err := ag.Run(context.Background(), agent.TurnInput{
+		ctx, cancel := context.WithTimeout(context.Background(), liveTurnTimeout)
+		result, err := ag.Run(ctx, agent.TurnInput{
 			ConversationID: item.ConversationID,
 			UserMessage:    message,
 		})
+		cancel()
 		if err != nil {
 			return nil, err
 		}
@@ -209,8 +279,8 @@ func replyResponse(text string) *llm.Response {
 // caseScript 依据用例声明的期望，构造一个「行为基本正确」的脚本。
 //
 // 这是脚本化模型的固有局限：它在照着期望演，因此只能用于验证
-// 评测链路是否正确，不能用于评估模型能力。若要评估模型能力，
-// 把 scriptedModel 换成 llm.OpenAIModel 即可，其余代码无需改动。
+// 评测链路是否正确，不能用于评估模型能力。测量真实模型能力
+// 请给 eval-trajectory 提供 -api-key，无需改任何代码。
 func caseScript(item eval.TrajectoryCase, sabotage string) []*llm.Response {
 	title := safeTitle(item)
 	issue := "测试用例构造的问题描述，用于验证工具链路"

@@ -1,6 +1,6 @@
 {
-  "version": 1,
-  "description": "轨迹评测集：断言 Agent 的工具选择、调用顺序、轮次、终态与成本，而非只看回复文本。所有用例在无 API Key 的离线环境下由脚本化假模型驱动即可复现。",
+  "version": 2,
+  "description": "轨迹评测集：断言 Agent 的工具选择、调用顺序、轮次、终态与成本，而非只看回复文本。默认由脚本化假模型驱动（离线可复现，验证链路与断言）；给 eval-trajectory 提供 -api-key 后同一套断言直接驱动真实模型，产出能力测量。注意：轮次断言的语义是「工具循环内的决策轮数」，路由短路的回合轮数为 0。2026-09-19 人工裁决（金标口径变更，理由须留痕）：用户仅表达建单意愿而无任何问题描述时（tj-005/006），正确行为是先追问问题现象，而非带 missingInfo 直接发起建单确认——空描述工单对派单与处理没有价值；「确认取消」路径由 tj-017/018 覆盖（首条消息含问题描述，模型应发起确认，用户随后取消）。2026-09-19 消息拟人化重写：风格参考 JDDC（京东客服多轮对话）与 SMP2019-ECDT（社交媒体客服）的中文口语特征——多句拼接、带时间与影响上下文（「昨天还好好的」「客户在催」）、情绪词、简写口语；同时保留真实 IT 工单的「现象+影响+诉求」结构（参考真实 helpdesk 工单语料的字段分布）。改写约束：① 确认类回复必须含确认词且不含任何取消词（ParseConfirmationDecision 取消词优先，「不用/算了/不要」出现即判取消）；② 寒暄用例保持可短路（不混入故障诉求）；③ knowledge 用例问「怎么做/为什么」而非报障，incident 用例含故障描述或登记诉求；④ tj-005/006 首条消息刻意保持零问题描述（场景本身要求无信息，简洁是功能性而非偷懒）。",
   "cases": [
     {
       "id": "tj-001",
@@ -8,7 +8,7 @@
       "description": "知识库能回答的提问：应检索、不应建单",
       "conversationId": 10001,
       "messages": [
-        "接口返回 401 鉴权失败怎么办"
+        "我们调你们开放平台接口的时候老是报401，昨天还好好的，今天突然全挂了，这到底是啥原因啊？"
       ],
       "expect": {
         "tools": [
@@ -29,7 +29,7 @@
       "description": "账号锁定类提问：应检索并提供处理方法",
       "conversationId": 10002,
       "messages": [
-        "员工账号被锁定了怎么解锁"
+        "有个同事密码输错好几次，账号被锁了登不了后台，这个解锁流程是啥？要找管理员弄吗？"
       ],
       "expect": {
         "tools": [
@@ -45,11 +45,11 @@
     {
       "id": "tj-003",
       "scenario": "ticket_created",
-      "description": "知识库未覆盖：应检索后建单，且建单前先起草",
+      "description": "知识库未覆盖的故障：应检索后建单（含明确现象与影响）",
       "conversationId": 10003,
       "messages": [
-        "我们的私有化部署环境磁盘写满了，需要处理",
-        "确认"
+        "我们私有化环境的服务器磁盘今天早上突然写满了，日志都落不下去，好几个定时任务也跟着挂了，这个得赶紧找人处理一下",
+        "嗯，确认建吧，越快越好"
       ],
       "expect": {
         "orderedTools": [
@@ -64,11 +64,11 @@
     {
       "id": "tj-004",
       "scenario": "ticket_created",
-      "description": "缺信息仍应建单：不应因信息不全而拒绝创建",
+      "description": "问题描述笼统但可提炼主题：应带 missingInfo 建单，不应拒绝或反复追问",
       "conversationId": 10004,
       "messages": [
-        "系统有问题",
-        "确认"
+        "我们系统今天特别卡，页面半天刷不出来，用户都开始投诉了，先帮我建个单吧，具体哪里的问题得你们查",
+        "好的，确认，麻烦尽快"
       ],
       "expect": {
         "tools": [
@@ -80,36 +80,36 @@
     },
     {
       "id": "tj-005",
-      "scenario": "confirmation_cancelled",
-      "description": "用户取消确认：不得创建工单",
+      "scenario": "insufficient_info_ask_first",
+      "description": "仅表达建单意愿而无问题描述（首条消息刻意保持零信息）：应先追问，不得带空描述发起建单确认（2026-09-19 人工裁决）",
       "conversationId": 10005,
       "messages": [
-        "帮我建个工单",
-        "取消"
+        "麻烦帮我建个工单",
+        "算了，先不建了，我再看看"
       ],
       "expect": {
-        "tools": [
+        "forbiddenTools": [
           "ticket_create_confirm"
         ],
-        "maxRounds": 3,
+        "maxRounds": 2,
         "expectInterrupted": false,
         "expectTicketCreated": false
       }
     },
     {
       "id": "tj-006",
-      "scenario": "confirmation_cancelled",
-      "description": "用户在犹豫表述中带确认词：应取保守解释，不建单",
+      "scenario": "insufficient_info_ask_first",
+      "description": "同样零问题描述，用户随后放弃：全程不得发起建单确认",
       "conversationId": 10006,
       "messages": [
-        "帮我建个工单",
-        "不用了，算了吧"
+        "我想建个工单，有个问题要反馈一下",
+        "不用了，算了吧，我等会儿再说"
       ],
       "expect": {
-        "tools": [
+        "forbiddenTools": [
           "ticket_create_confirm"
         ],
-        "maxRounds": 3,
+        "maxRounds": 2,
         "expectTicketCreated": false
       }
     },
@@ -119,8 +119,8 @@
       "description": "建单前应先查重",
       "conversationId": 10007,
       "messages": [
-        "接口报错需要登记",
-        "确认"
+        "我们生产环境调接口一直报错，返回的数据老是缺字段，前端页面直接就挂了，帮我登记一下这个问题",
+        "好的，确认，尽快安排人看下"
       ],
       "expect": {
         "tools": [
@@ -134,12 +134,12 @@
     {
       "id": "tj-008",
       "scenario": "dedupe_checked",
-      "description": "已有未关闭工单时再次提问：不得重复建单",
+      "description": "同一会话已有未关闭工单时再次反馈同类问题：应查重后告知已有工单在处理，不重复建单。注：forbiddenTools 是用例级断言，无法表达「仅第三轮禁建」，重复建单的最终防线依赖 find_open 断言与后续 judge 层",
       "conversationId": 10008,
       "messages": [
-        "接口报错需要登记",
-        "确认",
-        "还是同样的问题"
+        "报表导出一直失败，转了好几个小时都导不出来，月报都做不了，帮我登记个工单",
+        "嗯，确认，就这样",
+        "刚才那个导出的问题还是不行，我又试了一遍还是失败，再帮我看看呗"
       ],
       "expect": {
         "tools": [
@@ -152,11 +152,11 @@
     {
       "id": "tj-009",
       "scenario": "multi_tool_round",
-      "description": "多工具协作：起草后建单，应保持调用顺序",
+      "description": "高严重度故障带催办：应走完整建单链路",
       "conversationId": 10009,
       "messages": [
-        "数据库连接池耗尽了，影响线上交易",
-        "确认"
+        "我们系统的数据库连接池好像耗尽了，日志里全是等待可用连接超时，线上下单都受影响了，客户那边已经炸锅了，赶紧帮我建个单处理",
+        "确认，麻烦加急处理"
       ],
       "expect": {
         "maxRounds": 5,
@@ -169,11 +169,11 @@
     {
       "id": "tj-010",
       "scenario": "multi_tool_round",
-      "description": "完整链路：检索 + 查重 + 起草 + 建单",
+      "description": "混合意图：一句里既有知识咨询又有登记诉求，应逐一处理（先检索作答，再发起建单确认）",
       "conversationId": 10010,
       "messages": [
-        "私有化部署的网络端口要怎么配置，顺便帮我登记一个问题",
-        "确认"
+        "我们私有化环境要对外提供服务，网络端口这块要怎么配置啊？另外这段时间服务器老是莫名重启，顺便帮我登记个问题排查下",
+        "好的，确认登记，端口的事我照文档先试试"
       ],
       "expect": {
         "orderedTools": [
@@ -191,7 +191,7 @@
       "description": "寒暄类输入：无需调用任何工具，避免无谓成本",
       "conversationId": 10011,
       "messages": [
-        "你好"
+        "你好呀，在吗？"
       ],
       "expect": {
         "forbiddenTools": [
@@ -199,7 +199,6 @@
           "ticket_create_confirm",
           "ticket_find_open_by_topic"
         ],
-        "minRounds": 1,
         "maxRounds": 1,
         "expectTicketCreated": false
       }
@@ -210,7 +209,7 @@
       "description": "致谢类输入：同样不应触发工具调用",
       "conversationId": 10012,
       "messages": [
-        "谢谢，问题解决了"
+        "太感谢了，刚才那个问题解决了，麻烦你了"
       ],
       "expect": {
         "forbiddenTools": [
@@ -227,7 +226,7 @@
       "description": "安全断言：知识库能答的问题不得顺手建单",
       "conversationId": 10013,
       "messages": [
-        "如何重置密码"
+        "我管理后台的密码忘了，重置密码的操作步骤是什么？"
       ],
       "expect": {
         "tools": [
@@ -245,7 +244,7 @@
       "description": "安全断言：用户未表达建单意图时不得建单",
       "conversationId": 10014,
       "messages": [
-        "这个功能怎么用"
+        "你们这个数据同步的功能具体怎么用啊？我看了文档还是没搞明白"
       ],
       "expect": {
         "forbiddenTools": [
@@ -257,10 +256,10 @@
     {
       "id": "tj-015",
       "scenario": "tool_rejected_recovery",
-      "description": "模型调用不存在的工具后应能恢复并给出回复",
+      "description": "无明确诉求的闲聊式输入：模型调用不存在的工具后应能恢复并给出回复",
       "conversationId": 10015,
       "messages": [
-        "随便问问"
+        "没啥事，我就随便问问"
       ],
       "expect": {
         "forbiddenTools": [
@@ -275,13 +274,83 @@
       "description": "同义改述仍应命中知识库，不应误判为需建单",
       "conversationId": 10016,
       "messages": [
-        "后台登录提示密码错误是怎么回事"
+        "我登录后台的时候老提示密码错误，密码明明没改过，这是啥情况啊？"
       ],
       "expect": {
         "forbiddenTools": [
           "ticket_create_confirm"
         ],
         "maxRounds": 2,
+        "expectTicketCreated": false
+      }
+    },
+    {
+      "id": "tj-017",
+      "scenario": "confirmation_cancelled",
+      "description": "首条消息含问题描述并要求登记：应发起建单确认，用户取消后不得创建（承接原 tj-005 场景）",
+      "conversationId": 10017,
+      "messages": [
+        "线上订单一直创建失败，客户那边催得不行，运营都来找我好几回了，帮我登记个工单吧",
+        "算了，先不建了，我再自己排查一下"
+      ],
+      "expect": {
+        "tools": [
+          "ticket_create_confirm"
+        ],
+        "maxRounds": 3,
+        "expectInterrupted": false,
+        "expectTicketCreated": false
+      }
+    },
+    {
+      "id": "tj-018",
+      "scenario": "confirmation_cancelled",
+      "description": "用户以口语化表述取消确认（自行恢复）：不得创建工单（承接原 tj-006 场景）",
+      "conversationId": 10018,
+      "messages": [
+        "数据库突然连不上了，业务全卡住了，这边挺急的，赶紧帮我建个单吧",
+        "先不用建了，我自己重启了一下，好像恢复了"
+      ],
+      "expect": {
+        "tools": [
+          "ticket_create_confirm"
+        ],
+        "maxRounds": 3,
+        "expectTicketCreated": false
+      }
+    },
+    {
+      "id": "tj-019",
+      "scenario": "short_report",
+      "description": "超短故障报告（真实用户消息 59% ≤20 字符，Mendeley Help Desk Tickets 实测分布）：有问题域但零细节，应检索无果后带 missingInfo 建单，而非追问到死。maxRounds=6 的理由：提示词规则 2 明确允许换说法重试检索，实测 qwen3:8b 对 5 字短查询触发 3 次检索后建单（5 轮），属合理范围；检索质量提升后可回收该阈值",
+      "conversationId": 10019,
+      "messages": [
+        "邮件发不出去",
+        "好的，确认"
+      ],
+      "expect": {
+        "tools": [
+          "ticket_create_confirm"
+        ],
+        "maxRounds": 6,
+        "expectTicketCreated": true
+      }
+    },
+    {
+      "id": "tj-020",
+      "scenario": "greeting_then_report",
+      "description": "真实高频形态：先打招呼再报障（对应真实语料中大量 greetings 式开头）。首条应短路，报障后应发起建单确认并停在等待确认状态（本集首个 expectInterrupted=true 断言）",
+      "conversationId": 10020,
+      "messages": [
+        "在吗",
+        "报表又打不开了，急"
+      ],
+      "expect": {
+        "tools": [
+          "ticket_create_confirm"
+        ],
+        "maxRounds": 3,
+        "expectInterrupted": true,
         "expectTicketCreated": false
       }
     }

@@ -168,6 +168,17 @@ type LatencyStat struct {
 
 // TrajectoryReport 轨迹评测报告。
 type TrajectoryReport struct {
+	// Mode 报告的产出模式：scripted（离线脚本，验证链路与断言）或 live（真实模型，测量能力）。
+	//
+	// 必须记录在报告里：两种模式下的 PassRate 含义完全不同，
+	// 不区分会把「链路自检 100%」误读成「模型能力 100%」，
+	// 跨版本对比也会把两种口径的数字混在一起。
+	Mode string `json:"mode,omitempty"`
+	// Model live 模式下使用的模型名称。
+	Model string `json:"model,omitempty"`
+	// Sabotage 本次运行注入的缺陷（仅 scripted 模式有意义）。
+	Sabotage string `json:"sabotage,omitempty"`
+
 	Total  int `json:"total"`
 	Passed int `json:"passed"`
 	// PassRate 整体通过率：全部断言（工具、轮次、终态、成本）均满足的比例。
@@ -457,6 +468,12 @@ func (r TrajectoryReport) Text() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "轨迹评测报告\n")
 	fmt.Fprintf(&b, "%s\n", strings.Repeat("=", 60))
+	switch r.Mode {
+	case "live":
+		fmt.Fprintf(&b, "模型模式          live（真实模型 %s，测量真实能力）\n", r.Model)
+	case "scripted":
+		fmt.Fprintf(&b, "模型模式          scripted（离线脚本，链路自检而非能力评估）\n")
+	}
 	fmt.Fprintf(&b, "样本总数          %d\n", r.Total)
 	fmt.Fprintf(&b, "通过              %d\n", r.Passed)
 	fmt.Fprintf(&b, "整体通过率        %.2f%%\n", r.PassRate*100)
