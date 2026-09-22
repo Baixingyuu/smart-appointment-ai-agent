@@ -267,6 +267,14 @@ func (a *Agent) Run(ctx context.Context, input TurnInput) (*TurnResult, error) {
 	}
 
 	messages := []llm.Message{{Role: llm.RoleUser, Content: input.UserMessage}}
+	return a.runToolLoop(ctx, input, messages, startedAt, result)
+}
+
+// runToolLoop 模型决策循环：调用模型 → 执行工具 → 回灌观察 → 再次决策。
+//
+// 收 messages 而非自己构造：确认澄清回合需要在消息里预置未决草案的说明，
+// 两处共用同一个循环，治理约束（写工具必经确认、预算上限）才只有一份实现。
+func (a *Agent) runToolLoop(ctx context.Context, input TurnInput, messages []llm.Message, startedAt time.Time, result *TurnResult) (*TurnResult, error) {
 	schemas := a.toolSchemas()
 
 	counts := make(map[string]int)
