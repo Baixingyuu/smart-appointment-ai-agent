@@ -79,6 +79,64 @@ func TestParseConfirmationDecisionAvoidsSubstringTraps(t *testing.T) {
 	}
 }
 
+// TestParseConfirmationDecisionRejectsNonApproval 锁住一类具体缺陷：
+// 「确认」二字出现在中文里并不总表示批准——它常作为自述核实
+// （"我确认一下再说"）或否定式（"无法确认"）的一部分出现。
+// 按词表子串匹配会被判成确认，在有副作用的建单场景下即"用户没同意就建了单"。
+//
+// 另一类是明确的新一轮建单诉求（实测样本
+// eval/samples/manual-20260920-中断吞掉新诉求与确认误判.jsonl 第 3 轮
+// 「还是没弄好，帮我建个单跟进吧」）：它表达的是"要登记一件新事"，
+// 而不是"批准上一轮那份草案"，因此判为 has_new_demand 交回模型带上下文重拟。
+func TestParseConfirmationDecisionRejectsNonApproval(t *testing.T) {
+	cases := []struct {
+		text string
+		want ConfirmationDecision
+	}{
+		// 含确认词但语义是"我自己再去核实/再想想"：不是批准。
+		{"我确认一下影响范围再说", DecisionUnknown},
+		{"我确认一下再回复你", DecisionUnknown},
+		{"等我核实一下再说", DecisionUnknown},
+		{"这个我还不确定", DecisionUnknown},
+		{"不能确认，风险太大", DecisionUnknown},
+		// 「同意」是确认词，但整句是否定式确认，不能被判成批准。
+		{"无法确认，需要审批人同意", DecisionUnknown},
+		{"没法确认，我先问问领导", DecisionUnknown},
+		{"你稍等，我看看", DecisionUnknown},
+
+		// 明确的新建单诉求：交回模型，而不是拿旧草案直接建单。
+		{"还是没弄好，帮我建个单跟进", DecisionHasNewDemand},
+		{"帮我建个单跟进吧", DecisionHasNewDemand},
+		{"这个问题没解决，再提个工单跟进", DecisionHasNewDemand},
+		{"帮我登记个工单跟进吧", DecisionHasNewDemand},
+		// 连"确认"都说了，但仍夹带新的建单诉求：整句不是对旧草案的干净批准。
+		{"确认。另外网络端口的问题帮我建个单", DecisionHasNewDemand},
+	}
+	for _, tc := range cases {
+		t.Run(tc.text, func(t *testing.T) {
+			if got := ParseConfirmationDecision(tc.text); got != tc.want {
+				t.Fatalf("输入 %q 期望 %s，实际 %s", tc.text, tc.want, got)
+			}
+		})
+	}
+}
+
+// TestOnlyConfirmGrantsApproval 是一条口径不变式而非逐例断言：
+// 写操作（建单）的唯一许可证是 DecisionConfirm，因此除它以外的任何判定
+// 都不得在语义上等同于"用户批准了这份草案"。
+// 新增枚举值时必须落在这条不变式之内。
+func TestOnlyConfirmGrantsApproval(t *testing.T) {
+	probes := []string{
+		"", "   ", "我想想", "我确认一下影响范围再说", "无法确认",
+		"帮我建个单跟进吧", "取消", "不用了", "好的", "确认",
+	}
+	for _, text := range probes {
+		if got := ParseConfirmationDecision(text); (got == DecisionConfirm) != (text == "好的" || text == "确认") {
+			t.Errorf("%q 判定为 %s，批准与否不符预期", text, got)
+		}
+	}
+}
+
 func TestInterruptValidate(t *testing.T) {
 	valid := Interrupt{
 		ConversationID: 1,

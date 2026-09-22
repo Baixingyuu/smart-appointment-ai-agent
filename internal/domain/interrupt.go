@@ -34,6 +34,13 @@ const (
 	DecisionConfirm ConfirmationDecision = "confirm"
 	DecisionCancel  ConfirmationDecision = "cancel"
 	DecisionUnknown ConfirmationDecision = "unknown"
+	// DecisionHasNewDemand 表示这条消息在提出新的诉求（典型形态：
+	// 「还是没弄好，帮我建个单跟进」），而不是在答复当前待确认的草案。
+	//
+	// 它必须与 DecisionConfirm 区分开：待确认草案是上一轮定下的，
+	// 而用户这时要登记的往往是另一件事（或同一件事的新进展），
+	// 直接拿旧 Payload 建单会建错单，同时把新诉求丢掉。
+	DecisionHasNewDemand ConfirmationDecision = "has_new_demand"
 )
 
 // 确认与取消关键词。
@@ -51,23 +58,56 @@ var (
 	cancelWords  = []string{"取消", "不用", "不需要", "不要", "算了", "放弃", "cancel", "abort"}
 )
 
+// nonApprovalPhrases 命中时，即便句子里有确认词也不算批准。
+//
+// 三类的共同点：「确认」在中文口语里经常不表示"我同意这份草案"——
+//   - 否定式：「不确定」「无法确认」。「确认」是「不确定」的子串，
+//     纯子串匹配会把「这个我还不确定」判成批准并直接建单（实测）；
+//   - 自述核实：「确认一下」「核实一下」主语是用户自己，
+//     意思是"我还要去查"，不是"我同意了"；
+//   - 延后表态：「再说」「稍等」「先不」明确还没给答复。
+var nonApprovalPhrases = []string{
+	"不确定", "不能确认", "无法确认", "没法确认",
+	"确认一下", "我再确认", "核实一下", "核对一下",
+	"再说", "稍等", "待会", "先不",
+}
+
+// newDemandPhrases 明确的新一轮建单/登记诉求。
+//
+// 词面取自实测样本与评测集（「帮我建个单」「提个工单」「帮我登记个工单」），
+// 刻意保持具体：只用「建」或「工单」单字会命中大量无关表述。
+var newDemandPhrases = []string{
+	"建个单", "建工单", "建个工单", "提个工单", "帮我建", "帮我登记",
+}
+
 // ParseConfirmationDecision 解析用户的确认答复。
 //
-// 判定顺序：取消优先于确认。
-// 理由是风险不对称——在写操作场景下，误判为确认会真的产生副作用（建单），
-// 误判为取消只是让用户重说一次。因此对犹豫表述（"不用了，确认吧"）
-// 一律取保守解释。
+// 判定阶梯：新建单诉求 → 取消 → 确认 → 语义不明。
 //
-// 两侧都未命中时返回 unknown，由编排层重新提问，而不是猜测。
+//   - 新建单诉求排最前：这句话要登记的事与上一轮定下的草案不一定是同一件，
+//     交给带上下文的模型判断，比用词表替它决定更接近真实语义。
+//     它本身不产生任何副作用，因此放在最前不会带来风险。
+//   - 取消优先于确认：理由仍是风险不对称——误判为确认会真的建单，
+//     误判为取消只是让用户重说一次。故对犹豫表述（"不用了，确认吧"）
+//     一律取保守解释。
+//   - 确认必须未被否决短语命中（见 nonApprovalPhrases）。
+//
+// 除 DecisionConfirm 外没有任何判定能触达建单，
+// 这条不变式由 TestOnlyConfirmGrantsApproval 与编排层共同守住。
+//
+// 两侧都未命中时返回 unknown，由编排层带上下文澄清，而不是猜测。
 func ParseConfirmationDecision(text string) ConfirmationDecision {
 	value := strings.ToLower(strings.TrimSpace(text))
 	if value == "" {
 		return DecisionUnknown
 	}
+	if matchesAnyKeyword(value, newDemandPhrases) {
+		return DecisionHasNewDemand
+	}
 	if matchesAnyKeyword(value, cancelWords) {
 		return DecisionCancel
 	}
-	if matchesAnyKeyword(value, confirmWords) {
+	if matchesAnyKeyword(value, confirmWords) && !matchesAnyKeyword(value, nonApprovalPhrases) {
 		return DecisionConfirm
 	}
 	return DecisionUnknown

@@ -213,6 +213,11 @@ type TurnResult struct {
 	// CheckPointID 与 Prompt 仅在 Interrupted 时有效。
 	CheckPointID string
 	Prompt       string
+	// Decision 为存在待确认中断时对本条消息的语义判定；无中断时为空。
+	//
+	// 对外暴露而非只用于内部分支：确认误判此前只能靠"单建没建"倒推，
+	// 有了判定值，对话窗口与评测能直接看出是哪一类误判。
+	Decision domain.ConfirmationDecision
 
 	TicketID  int64
 	Usage     llm.Usage
