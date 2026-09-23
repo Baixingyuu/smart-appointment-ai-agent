@@ -92,7 +92,8 @@ chat:
 	$(GO) run ./cmd/helpdesk-agent chat $(ARGS)
 
 # 人工测试对话窗口（本地 qwen3:8b）。每回合轨迹落 eval/samples/*.jsonl，
-# 含意图/轮次/逐轮 token/工具序列/被拒原因/是否建单，供后续评测与缺陷归因复核。
+# 含意图/轮次/逐轮 token/工具序列/被拒原因/是否建单/确认判定/会话是否仍待确认，
+# 供后续评测与缺陷归因复核（后两项是复核「吞消息」与「确认误判」的判据）。
 # 与 eval-trajectory-local 同一模型口径：4k 默认上下文，勿改用 8k/16k 变体（会撑爆显存）。
 .PHONY: chat-local
 chat-local:

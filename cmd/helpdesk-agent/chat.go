@@ -25,29 +25,34 @@ import (
 // turnSample 一条人工测试样本。
 //
 // 只存回复文本无法定位缺陷，因此每回合连同归因字段一起落盘：
-// 意图、是否短路、逐轮 token、每个工具调用的状态与拒绝原因、是否发起确认、是否建单。
+// 意图、是否短路、逐轮 token、每个工具调用的状态与拒绝原因、是否发起确认、
+// 会话是否仍待确认、本轮的确认判定、是否建单。
 // 事后分析靠这些字段做归因，不靠回忆。
 type turnSample struct {
-	At             string              `json:"at"`
-	ConversationID int64               `json:"conversationId"`
-	Turn           int                 `json:"turn"`
-	UserMessage    string              `json:"userMessage"`
-	Reply          string              `json:"reply"`
-	Intent         string              `json:"intent,omitempty"`
-	ShortCircuit   bool                `json:"shortCircuit,omitempty"`
-	Interrupted    bool                `json:"interrupted,omitempty"`
-	TicketID       int64               `json:"ticketId,omitempty"`
-	Rounds         int                 `json:"rounds"`
-	PromptTokens   int                 `json:"promptTokens"`
-	TokenTotal     int                 `json:"tokenTotal"`
-	DurationMS     int64               `json:"durationMs"`
-	Tools          []string            `json:"tools,omitempty"`
-	Rejections     []string            `json:"rejections,omitempty"`
-	RagSufficient  bool                `json:"ragSufficient,omitempty"`
-	RagReason      string              `json:"ragReason,omitempty"`
-	RagRounds      int                 `json:"ragRounds,omitempty"`
-	RoundUsage     []agent.RoundRecord `json:"roundUsage,omitempty"`
-	Error          string              `json:"error,omitempty"`
+	At             string `json:"at"`
+	ConversationID int64  `json:"conversationId"`
+	Turn           int    `json:"turn"`
+	UserMessage    string `json:"userMessage"`
+	Reply          string `json:"reply"`
+	Intent         string `json:"intent,omitempty"`
+	ShortCircuit   bool   `json:"shortCircuit,omitempty"`
+	Interrupted    bool   `json:"interrupted,omitempty"`
+	// AwaitingConfirmation 与 Interrupted 必须分开落盘：前者是「会话仍有草案待确认」，
+	// 后者是「本轮新起了一个确认」。复核「待确认期间消息被吞」这条缺陷靠的是前者。
+	AwaitingConfirmation bool                `json:"awaitingConfirmation,omitempty"`
+	Decision             string              `json:"confirmationDecision,omitempty"`
+	TicketID             int64               `json:"ticketId,omitempty"`
+	Rounds               int                 `json:"rounds"`
+	PromptTokens         int                 `json:"promptTokens"`
+	TokenTotal           int                 `json:"tokenTotal"`
+	DurationMS           int64               `json:"durationMs"`
+	Tools                []string            `json:"tools,omitempty"`
+	Rejections           []string            `json:"rejections,omitempty"`
+	RagSufficient        bool                `json:"ragSufficient,omitempty"`
+	RagReason            string              `json:"ragReason,omitempty"`
+	RagRounds            int                 `json:"ragRounds,omitempty"`
+	RoundUsage           []agent.RoundRecord `json:"roundUsage,omitempty"`
+	Error                string              `json:"error,omitempty"`
 }
 
 type sessionMeta struct {
@@ -195,6 +200,8 @@ func runChat(args []string) error {
 func fillFromTurn(sample *turnSample, result *agent.TurnResult) {
 	sample.Intent = string(result.Intent)
 	sample.ShortCircuit = result.ShortCircuited
+	sample.AwaitingConfirmation = result.AwaitingConfirmation
+	sample.Decision = string(result.Decision)
 	sample.Rounds = result.Rounds
 	sample.PromptTokens = result.Usage.PromptTokens
 	sample.TokenTotal = result.Usage.Total()
@@ -214,16 +221,23 @@ func fillFromTurn(sample *turnSample, result *agent.TurnResult) {
 
 func printReply(sample *turnSample) {
 	prefix := "助手 > "
-	if sample.Interrupted {
-		prefix = "助手 > [等待确认] "
+	switch {
+	case sample.AwaitingConfirmation && sample.Interrupted:
+		prefix = "助手 > [本轮发起确认，等待回复] "
+	case sample.AwaitingConfirmation:
+		prefix = "助手 > [仍在等待你的确认] "
 	}
 	fmt.Printf("%s%s\n", prefix, sample.Reply)
 	if sample.TicketID > 0 {
 		fmt.Printf("       工单 #%d 已创建\n", sample.TicketID)
 	}
-	fmt.Printf("       归因: 意图=%s 轮次=%d 工具=%s token=%d 耗时=%dms\n",
+	attribution := fmt.Sprintf("       归因: 意图=%s 轮次=%d 工具=%s token=%d 耗时=%dms",
 		orNone(sample.Intent), sample.Rounds, orNone(strings.Join(sample.Tools, ",")),
 		sample.TokenTotal, sample.DurationMS)
+	if sample.Decision != "" {
+		attribution += fmt.Sprintf(" 确认判定=%s", sample.Decision)
+	}
+	fmt.Println(attribution)
 	if len(sample.Rejections) > 0 {
 		fmt.Printf("       被拒调用: %s\n", strings.Join(sample.Rejections, " "))
 	}
@@ -280,9 +294,10 @@ func listTickets(st store.Store) {
 }
 
 func printTrace(result *agent.TurnResult) {
-	fmt.Printf("  意图=%s 短路=%v 轮次=%d token=%d/%d 耗时=%dms\n",
+	fmt.Printf("  意图=%s 短路=%v 轮次=%d token=%d/%d 耗时=%dms 确认判定=%s 待确认=%v\n",
 		orNone(string(result.Intent)), result.ShortCircuited, result.Rounds,
-		result.Usage.PromptTokens, result.Usage.CompletionTokens, result.DurationMS)
+		result.Usage.PromptTokens, result.Usage.CompletionTokens, result.DurationMS,
+		orNone(string(result.Decision)), result.AwaitingConfirmation)
 	for _, record := range result.RoundRecords {
 		fmt.Printf("    第 %d 轮  prompt=%d completion=%d 工具=%s\n",
 			record.Round, record.PromptTokens, record.CompletionTokens, orNone(strings.Join(record.Tools, ",")))
