@@ -44,7 +44,7 @@ func (a *Agent) routeAndShortCircuit(ctx context.Context, input TurnInput, start
 		return false, err
 	}
 	*result = *shortCircuit
-	a.finish(result, startedAt)
+	a.finish(result, input, startedAt)
 	return true, nil
 }
 

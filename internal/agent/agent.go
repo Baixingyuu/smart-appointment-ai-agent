@@ -236,8 +236,13 @@ type TurnResult struct {
 	// ShortCircuited 为 true 表示本次未进入工具循环（寒暄/无关请求）。
 	ShortCircuited bool
 	Reply          string
-	// Interrupted 为 true 时表示已发起确认，等待用户下一条消息。
+	// Interrupted 为 true 表示本轮新发起了一次确认。
 	Interrupted bool
+	// AwaitingConfirmation 为 true 表示本回合结束后会话仍停在等待确认状态。
+	//
+	// 两者必须分开：用户在待确认期间追问别的事情时，本轮没有"新发起确认"，
+	// 但会话依然在等那句确认。业务终态要的是后者，用 Interrupted 代理会误判。
+	AwaitingConfirmation bool
 	// CheckPointID 与 Prompt 仅在 Interrupted 时有效。
 	CheckPointID string
 	Prompt       string
@@ -267,8 +272,9 @@ type TurnResult struct {
 // Run 处理一条用户消息。
 //
 // 流程：
-//  1. 若存在待确认中断，先按本条消息的语义恢复或取消它（短路返回）。
-//  2. 否则进入模型决策循环：模型可调用工具，结果回灌后再次决策。
+//  1. 若存在待确认中断，先判定这条消息是否就是对该确认的表态。
+//     明确确认/取消则就此返回；其余情况带上一段"草案仍未决"的说明回落主循环。
+//  2. 主循环里模型可调用工具，结果回灌后再次决策。
 //  3. 模型给出最终回复，本轮结束。
 func (a *Agent) Run(ctx context.Context, input TurnInput) (*TurnResult, error) {
 	startedAt := a.now()
@@ -277,9 +283,21 @@ func (a *Agent) Run(ctx context.Context, input TurnInput) (*TurnResult, error) {
 		return nil, errors.New("用户消息不能为空")
 	}
 
-	// 优先处理未完成的确认：用户这条消息很可能就是在回答确认提问。
+	// 确认恢复必须先于路由，但不再无条件短路：
+	// 只有明确确认与明确取消才由中断消化，其余一律交给带上下文的模型。
+	var prelude string
+	var decision domain.ConfirmationDecision
 	if pending, ok := a.store.FindPendingInterrupt(input.ConversationID); ok {
-		return a.resume(ctx, pending, input.UserMessage, startedAt)
+		outcome, err := a.resume(ctx, pending, input, startedAt)
+		if err != nil {
+			return nil, err
+		}
+		if !outcome.Handled {
+			prelude = outcome.Prelude
+			decision = outcome.Result.Decision
+		} else {
+			return outcome.Result, nil
+		}
 	}
 
 	// 先做意图路由再决定路径。
@@ -287,14 +305,19 @@ func (a *Agent) Run(ctx context.Context, input TurnInput) (*TurnResult, error) {
 	// 顺序很关键：确认恢复必须先于分类——用户回复「确认」时，
 	// 按语义它属于 chitchat（无实质诉求），若先分类会被短路成寒暄回复，
 	// 从而丢失建单确认。
-	result := &TurnResult{}
-	if handled, err := a.routeAndShortCircuit(ctx, input, startedAt, result); err != nil {
-		return nil, err
-	} else if handled {
-		return result, nil
+	result := &TurnResult{Decision: decision}
+	if prelude == "" {
+		if handled, err := a.routeAndShortCircuit(ctx, input, startedAt, result); err != nil {
+			return nil, err
+		} else if handled {
+			return result, nil
+		}
 	}
 
 	messages := a.turnMessages(input)
+	if prelude != "" {
+		messages = append([]llm.Message{{Role: llm.RoleUser, Content: prelude}}, messages...)
+	}
 	return a.runToolLoop(ctx, input, messages, startedAt, result)
 }
 
@@ -331,7 +354,7 @@ func (a *Agent) runToolLoop(ctx context.Context, input TurnInput, messages []llm
 		// 没有工具调用即为最终回复，本轮结束。
 		if len(response.ToolCalls) == 0 {
 			result.Reply = response.Content
-			a.finish(result, startedAt)
+			a.finish(result, input, startedAt)
 			result.DurationUS = int(a.now().Sub(startedAt).Microseconds())
 			return result, nil
 		}
@@ -359,7 +382,7 @@ func (a *Agent) runToolLoop(ctx context.Context, input TurnInput, messages []llm
 				result.CheckPointID = interrupt.CheckPointID
 				result.Prompt = interrupt.Prompt
 				result.Reply = interrupt.Prompt
-				a.finish(result, startedAt)
+				a.finish(result, input, startedAt)
 				return result, nil
 			}
 
@@ -381,7 +404,7 @@ func (a *Agent) runToolLoop(ctx context.Context, input TurnInput, messages []llm
 	// 轮次用尽仍无最终回复：明确告知而非静默截断，
 	// 否则用户会收到空回复，且无人知道模型陷在工具循环里。
 	result.Reply = "抱歉，我处理这个问题时步骤过多，已转由人工继续跟进。"
-	a.finish(result, startedAt)
+	a.finish(result, input, startedAt)
 	return result, nil
 }
 
@@ -391,12 +414,23 @@ func elapsedMS(now, startedAt time.Time) (int, int) {
 	return int(elapsed.Milliseconds()), int(elapsed.Microseconds())
 }
 
-// finish 统一写入耗时字段。
+// finish 统一写入回合收尾字段：耗时与「会话是否仍在等待确认」。
 //
 // 集中在一处而非散落在各返回分支：早期实现手动赋值，新增分支时容易遗漏，
 // 结果某些路径的耗时恒为 0，指标静默失真。
-func (a *Agent) finish(result *TurnResult, startedAt time.Time) {
+func (a *Agent) finish(result *TurnResult, input TurnInput, startedAt time.Time) {
 	result.DurationMS, result.DurationUS = elapsedMS(a.now(), startedAt)
+	result.AwaitingConfirmation = a.awaitingConfirmation(input.ConversationID)
+}
+
+// awaitingConfirmation 会话当前是否仍有一份能被确认的草案。
+func (a *Agent) awaitingConfirmation(conversationID int64) bool {
+	pending, ok := a.store.FindPendingInterrupt(conversationID)
+	if !ok {
+		return false
+	}
+	// 用 CanResume 而非只看 Status：过期作废的草案不该被算作"还在等确认"。
+	return pending.CanResume(a.now()) == nil
 }
 
 // executeTool 执行一次工具调用，返回审计记录、给模型的观察结果，
@@ -465,37 +499,61 @@ func (a *Agent) executeTool(ctx context.Context, input TurnInput, call llm.ToolC
 	return record, observation, nil
 }
 
+// resumeOutcome 一次确认中断恢复的结果。
+type resumeOutcome struct {
+	// Result 为本回合结果。Handled 为 false 时只携带 Decision，
+	// 其余字段交给回落后的主循环填写。
+	Result *TurnResult
+	// Handled 为 true 表示这条消息确实是对该确认的表态（明确确认或明确取消），
+	// 回合可就此返回。
+	Handled bool
+	// Prelude 非空表示需要回到主循环，并把这段说明作为一条 user 消息
+	// 预置在历史之前。不加这段，模型并不知道有一份草案悬着。
+	Prelude string
+}
+
 // resume 处理用户对确认提问的答复。
 //
 // 语义：
-//   - 明确确认 → 执行写操作，回复结果
-//   - 明确取消 → 标记取消，回复取消
-//   - 无法识别 → 保留 pending，重新提问（不再调用模型，避免额外成本）
-func (a *Agent) resume(ctx context.Context, pending domain.Interrupt, text string, startedAt time.Time) (*TurnResult, error) {
+//   - 明确确认 → 执行写操作并回复结果（唯一能触达建单的分支）
+//   - 明确取消 → 标记取消并回复取消
+//   - 其余（新诉求 / 语义不明 / 已过期）→ 交回主循环，带上下文处理
+//
+// 第三条是本轮修复的核心。旧实现在语义不明时重新回显确认提问并直接返回，
+// 既不调模型也不读这条消息的内容，于是"待确认期间用户说的其他话"
+// 被静默吞掉（实测连吃两轮 promptTokens=0、rounds=0）。
+// 旧注释的理由是"避免额外成本"——省一次模型调用换来丢用户一句话，不划算。
+func (a *Agent) resume(ctx context.Context, pending domain.Interrupt, input TurnInput, startedAt time.Time) (resumeOutcome, error) {
 	result := &TurnResult{}
 
 	if err := pending.CanResume(a.now()); err != nil {
-		// 已过期或状态异常：标记后回到正常流程，让模型按新消息处理。
+		// 已过期或状态异常：作废草案，再按普通消息处理。
+		// 旧注释在这里写着"回到正常流程"，实现却只回了一句提示——
+		// 注释与行为不一致本身就是那个缺陷。
 		pending.Status = domain.InterruptExpired
 		if _, saveErr := a.store.SaveInterrupt(pending); saveErr != nil {
-			return nil, saveErr
+			return resumeOutcome{}, saveErr
 		}
-		result.Interrupted = false
-		result.Reply = "该确认已过期，请重新描述你的问题。"
-		a.finish(result, startedAt)
-		return result, nil
+		return resumeOutcome{
+			Result: result,
+			Prelude: "上一轮那份待确认的工单草案已过期，不要再就它征询确认；" +
+				"按用户这条消息正常处理。",
+		}, nil
 	}
 
-	switch domain.ParseConfirmationDecision(text) {
+	decision := domain.ParseConfirmationDecision(input.UserMessage)
+	result.Decision = decision
+
+	switch decision {
 	case domain.DecisionCancel:
 		pending.Status = domain.InterruptCancelled
 		pending.ResumeCount++
 		if _, err := a.store.SaveInterrupt(pending); err != nil {
-			return nil, err
+			return resumeOutcome{}, err
 		}
 		result.Reply = "已取消本次工单创建。如仍需协助，请继续说明。"
-		a.finish(result, startedAt)
-		return result, nil
+		a.finish(result, input, startedAt)
+		return resumeOutcome{Result: result, Handled: true}, nil
 
 	case domain.DecisionConfirm:
 		created, err := a.tickets.Create(pending.Payload)
@@ -503,16 +561,16 @@ func (a *Agent) resume(ctx context.Context, pending domain.Interrupt, text strin
 		if err != nil {
 			// 执行失败：保留 pending 让用户可以重试，而不是静默丢弃建单意图。
 			if _, saveErr := a.store.SaveInterrupt(pending); saveErr != nil {
-				return nil, saveErr
+				return resumeOutcome{}, saveErr
 			}
 			result.Reply = "工单创建失败，请稍后重试或联系人工客服。"
-			a.finish(result, startedAt)
-			return result, nil
+			a.finish(result, input, startedAt)
+			return resumeOutcome{Result: result, Handled: true}, nil
 		}
 		pending.Status = domain.InterruptResolved
 		pending.ResultTicketID = created.Ticket.ID
 		if _, err := a.store.SaveInterrupt(pending); err != nil {
-			return nil, err
+			return resumeOutcome{}, err
 		}
 
 		result.TicketID = created.Ticket.ID
@@ -521,17 +579,25 @@ func (a *Agent) resume(ctx context.Context, pending domain.Interrupt, text strin
 			Result: fmt.Sprintf("工单 T%d 已创建", created.Ticket.ID),
 		})
 		result.Reply = a.ticketCreatedReply(created)
-		a.finish(result, startedAt)
-		return result, nil
+		a.finish(result, input, startedAt)
+		return resumeOutcome{Result: result, Handled: true}, nil
 
 	default:
-		// 语义不明：不猜测、不消耗模型调用，重新给出确认提问。
-		result.Interrupted = true
-		result.CheckPointID = pending.CheckPointID
-		result.Prompt = fmt.Sprintf("请回复「确认」创建工单，或回复「取消」放弃。\n\n%s", pending.Prompt)
-		result.Reply = result.Prompt
-		a.finish(result, startedAt)
-		return result, nil
+		// 新诉求或语义不明：草案保持待确认并续期——旧实现把 ExpiresAt
+		// 固定在中断创建时刻，多轮澄清会被自己的超时打断。
+		// 重问只用一行说明，整份草案交给模型自己复述：旧实现把约 240 rune
+		// 的草案原样回显两遍，在 4k 上下文里挤掉的是检索证据。
+		pending.ResumeCount++
+		pending.ExpiresAt = a.now().Add(a.config.ConfirmTTL)
+		if _, err := a.store.SaveInterrupt(pending); err != nil {
+			return resumeOutcome{}, err
+		}
+		return resumeOutcome{
+			Result: result,
+			Prelude: "上一轮已起草一份工单等待用户确认，但这条消息没有明确表示确认或取消。" +
+				"请先回应用户这条消息里的诉求；若需要登记，重新起草并再次征询确认，" +
+				"不要拿旧草案直接建单。",
+		}, nil
 	}
 }
 
@@ -569,6 +635,15 @@ func (a *Agent) createInterrupt(input TurnInput, def tooling.Definition, args ma
 	}
 
 	now := a.now()
+	// 同一会话只允许一份待确认草案：先作废旧的。
+	// 待确认中断按「最新的 pending」取，旧草案若仍留在 pending，
+	// 这份一旦被确认或取消，下一次就会回落到那份用户没见过的草案并据其建单。
+	if previous, ok := a.store.FindPendingInterrupt(input.ConversationID); ok {
+		previous.Status = domain.InterruptSuperseded
+		if _, err := a.store.SaveInterrupt(previous); err != nil {
+			return nil, err
+		}
+	}
 	interrupt := domain.Interrupt{
 		ConversationID: input.ConversationID,
 		Kind:           domain.InterruptTicketCreation,

@@ -91,13 +91,20 @@ type ToolInvocation struct {
 
 // TurnObservation 一次会话回合的观测结果。
 type TurnObservation struct {
-	Reply       string
+	Reply string
+	// Interrupted 为本轮是否新发起了一次确认。
 	Interrupted bool
-	TicketID    int64
-	Tools       []ToolInvocation
-	Rounds      int
-	Usage       TokenUsage
-	DurationMS  int
+	// AwaitingConfirmation 为本回合结束后会话是否仍停在等待确认状态。
+	//
+	// 终态断言用的是这个字段而非 Interrupted：用户在待确认期间追问别的
+	// 事情时，本轮没有新发起确认，但会话依然在等那句确认——
+	// 「工单到底建没建、还差不差一句确认」问的是后者。
+	AwaitingConfirmation bool
+	TicketID             int64
+	Tools                []ToolInvocation
+	Rounds               int
+	Usage                TokenUsage
+	DurationMS           int
 	// DurationUS 为微秒精度耗时。
 	//
 	// 离线评测（脚本化模型 + 内存存储）单轮耗时在微秒级，
@@ -311,7 +318,7 @@ func runCase(item TrajectoryCase, runner Runner) CaseResult {
 		result.PromptTokens += observation.Usage.PromptTokens
 		result.TotalTokens += observation.Usage.Total()
 		result.DurationUS += observation.DurationUS
-		interrupted = observation.Interrupted
+		interrupted = observation.AwaitingConfirmation
 		if observation.TicketID > 0 {
 			ticketCreated = true
 		}

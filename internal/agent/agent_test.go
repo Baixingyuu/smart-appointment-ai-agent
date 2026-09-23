@@ -411,9 +411,15 @@ func TestCancelDoesNotCreateTicket(t *testing.T) {
 	}
 }
 
-func TestUnknownReplyReasksWithoutCallingModel(t *testing.T) {
+// TestUnknownReplyGoesToModelWithPendingContext 锁住 D2 修复后的契约。
+//
+// 这里原先的断言是"语义不明时不应调用模型、只重新回显确认提问"——
+// 那条纯状态机路径正是缺陷本身：待确认期间用户说的其他话被静默吞掉
+// （实测 promptTokens=0、rounds=0）。省一次调用换来丢一句话，不划算。
+func TestUnknownReplyGoesToModelWithPendingContext(t *testing.T) {
 	h := newHarness(t, []*llm.Response{
 		toolCall("call-1", ToolCreateConfirm, `{"title":"某个问题","description":"描述","category":"incident","priority":"P2"}`),
+		finalReply("好，那这份先不动；你说的另一件事我再帮你登记。"),
 	})
 
 	if first := h.runTurn(t, 400, "建个工单"); !first.Interrupted {
@@ -421,28 +427,100 @@ func TestUnknownReplyReasksWithoutCallingModel(t *testing.T) {
 	}
 	callsBefore := h.model.requestCount()
 
-	// 语义不明的回复不应被猜测为确认或取消。
-	result := h.runTurn(t, 400, "我想想")
+	result := h.runTurn(t, 400, "我想想，另外端口怎么开")
 
 	if result.TicketID != 0 {
 		t.Error("语义不明时不应创建工单")
 	}
-	if !result.Interrupted {
-		t.Error("语义不明时应重新提问")
+	if result.Decision != domain.DecisionUnknown {
+		t.Errorf("应记录判定为 unknown，实际 %s", result.Decision)
 	}
-	// 重新提问不应再消耗模型调用：这是一次纯状态机交互。
-	if after := h.model.requestCount(); after != callsBefore {
-		t.Errorf("语义不明时不应调用模型，调用次数 %d → %d", callsBefore, after)
+	// 关键区别：这条消息必须真的被模型读到，而不是被一行固定文案挡掉。
+	if after := h.model.requestCount(); after != callsBefore+1 {
+		t.Errorf("语义不明时应交回模型，调用次数 %d → %d", callsBefore, after)
 	}
-	// 中断应保持 pending，使用户仍可确认。
+	request := h.model.lastRequest()
+	if !containsMessage(request.Messages, "我想想，另外端口怎么开") {
+		t.Errorf("用户原话必须进模型请求，实际消息 %+v", contents(request.Messages))
+	}
+	if !hasPendingDraftNote(request.Messages) {
+		t.Error("模型必须被告知仍有一份未决草案，否则它会重复起草或忘掉确认")
+	}
+	// 中断保持 pending，用户之后仍可一句「确认」完成建单。
 	if _, ok := h.store.FindPendingInterrupt(400); !ok {
 		t.Error("语义不明时中断应保持 pending")
 	}
 }
 
+// TestOnlyExplicitConfirmCreatesTicket 是写操作的唯一入口这条不变式的落库版断言：
+// 不看回复文案、不看调用次数，只看工单表——四种判定里只有明确确认能建出单。
+func TestOnlyExplicitConfirmCreatesTicket(t *testing.T) {
+	cases := []struct {
+		name     string
+		reply    string
+		want     domain.ConfirmationDecision
+		wantCall bool
+	}{
+		{"明确确认", "确认", domain.DecisionConfirm, false},
+		{"明确取消", "取消", domain.DecisionCancel, false},
+		{"语义不明", "我想想", domain.DecisionUnknown, true},
+		{"夹带新诉求", "还是没弄好，帮我建个单跟进", domain.DecisionHasNewDemand, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHarness(t, []*llm.Response{
+				toolCall("call-1", ToolCreateConfirm, `{"title":"不变式用例","description":"描述","category":"incident","priority":"P2"}`),
+				finalReply("收到，我先不动这份草案。"),
+			})
+			if first := h.runTurn(t, 900, "建个工单"); !first.Interrupted {
+				t.Fatal("应先发起确认")
+			}
+			createdByDraft := len(h.store.ListTickets())
+			if createdByDraft != 0 {
+				t.Fatalf("确认前应无工单，实际 %d", createdByDraft)
+			}
+
+			result := h.runTurn(t, 900, tc.reply)
+			if result.Decision != tc.want {
+				t.Errorf("判定应为 %s，实际 %s", tc.want, result.Decision)
+			}
+			// 只有"明确确认"这一格允许出现工单，其余三格建出单都是越界。
+			if got := len(h.store.ListTickets()); (got > 0) != (tc.want == domain.DecisionConfirm) {
+				t.Errorf("工单数 %d 与判定 %s 不匹配：只有明确确认可建单", got, tc.want)
+			}
+			if calls := h.model.requestCount(); calls != 1+boolToInt(tc.wantCall) {
+				t.Errorf("模型调用次数 %d 不符：该分支应交回模型=%v", calls, tc.wantCall)
+			}
+		})
+	}
+}
+
+func boolToInt(v bool) int {
+	if v {
+		return 1
+	}
+	return 0
+}
+
+// containsMessage 判断请求消息中是否有内容包含原文的条目。
+func containsMessage(messages []llm.Message, needle string) bool {
+	for _, m := range messages {
+		if strings.Contains(m.Content, needle) {
+			return true
+		}
+	}
+	return false
+}
+
+// hasPendingDraftNote 判断模型是否被告知了草案的状态（未决或已过期）。
+func hasPendingDraftNote(messages []llm.Message) bool {
+	return containsMessage(messages, "待确认的工单草案") || containsMessage(messages, "一份工单等待用户确认")
+}
+
 func TestExpiredInterruptDoesNotCreateTicket(t *testing.T) {
 	h := newHarness(t, []*llm.Response{
 		toolCall("call-1", ToolCreateConfirm, `{"title":"过期测试","description":"描述","category":"incident","priority":"P2"}`),
+		finalReply("那份草案已经超时作废了，我重新帮你看看现在的问题。"),
 	})
 
 	if first := h.runTurn(t, 500, "建个工单"); !first.Interrupted {
@@ -466,6 +544,56 @@ func TestExpiredInterruptDoesNotCreateTicket(t *testing.T) {
 	}
 	if result.Reply == "" {
 		t.Error("过期应给出明确提示")
+	}
+	// 过期草案必须就此失效，不能留在 pending 里等下一次被"确认"。
+	if _, ok := h.store.FindPendingInterrupt(500); ok {
+		t.Error("过期后不应仍有待确认中断")
+	}
+	// 旧实现在这里只回一句"已过期"就把消息丢了；新契约是交回模型继续处理。
+	if calls := h.model.requestCount(); calls != 2 {
+		t.Errorf("过期后这条消息应交回模型，实际调用 %d 次", calls)
+	}
+	if !containsMessage(h.model.lastRequest().Messages, "已过期") {
+		t.Error("模型必须被告知那份草案已过期，否则它可能继续就旧草案征询确认")
+	}
+}
+
+// TestRedraftedInterruptSupersedesPrevious 守住一份幽灵确认隐患：
+// 同一会话重新起草后，旧草案必须作废。待确认中断取的是「最新的 pending」，
+// 旧草案若仍是 pending，新草案一旦被确认，下一次查找就回落到那份
+// 用户从没见过的草案——他再说「确认」就凭空多出一张单。
+func TestRedraftedInterruptSupersedesPrevious(t *testing.T) {
+	h := newHarness(t, []*llm.Response{
+		toolCall("call-1", ToolCreateConfirm, `{"title":"第一份草案","description":"描述","category":"incident","priority":"P2"}`),
+		toolCall("call-2", ToolCreateConfirm, `{"title":"登录一直转圈","description":"描述","category":"incident","priority":"P1"}`),
+	})
+
+	if first := h.runTurn(t, 700, "建个工单"); !first.Interrupted {
+		t.Fatal("第一轮应发起确认")
+	}
+	// 用户没批准第一份，而是提出了新的登记诉求 → 模型重新起草。
+	second := h.runTurn(t, 700, "还是没弄好，帮我建个单跟进登录问题")
+	if !second.Interrupted {
+		t.Fatal("第二轮应就新草案再次确认")
+	}
+	if got := len(h.store.ListTickets()); got != 0 {
+		t.Fatalf("两轮都不该建单，实际 %d 张", got)
+	}
+
+	result := h.runTurn(t, 700, "确认")
+	tickets := h.store.ListTickets()
+	if len(tickets) != 1 {
+		t.Fatalf("应只建出一张单，实际 %d", len(tickets))
+	}
+	if tickets[0].Title != "登录一直转圈" {
+		t.Errorf("建出的必须是用户见过并确认的那份，实际《%s》", tickets[0].Title)
+	}
+	if result.TicketID != tickets[0].ID {
+		t.Errorf("返回的工单 ID %d 与落库 %d 不一致", result.TicketID, tickets[0].ID)
+	}
+	// 关键：确认后不得再有任何待确认中断（旧草案已被取代，不是仍挂着）。
+	if stale, ok := h.store.FindPendingInterrupt(700); ok {
+		t.Errorf("确认后仍残留待确认中断《%s》", stale.Payload.Title)
 	}
 }
 

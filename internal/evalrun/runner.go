@@ -48,11 +48,12 @@ func (r *AgentRunner) RunTurn(conversationID int64, message string) (eval.TurnOb
 	}
 
 	return eval.TurnObservation{
-		Reply:       result.Reply,
-		Interrupted: result.Interrupted,
-		TicketID:    result.TicketID,
-		Tools:       tools,
-		Rounds:      result.Rounds,
+		Reply:                result.Reply,
+		Interrupted:          result.Interrupted,
+		AwaitingConfirmation: result.AwaitingConfirmation,
+		TicketID:             result.TicketID,
+		Tools:                tools,
+		Rounds:               result.Rounds,
 		Usage: eval.TokenUsage{
 			PromptTokens:     result.Usage.PromptTokens,
 			CompletionTokens: result.Usage.CompletionTokens,

@@ -16,6 +16,12 @@ const (
 	InterruptResolved  InterruptStatus = "resolved"  // 用户确认，动作已执行
 	InterruptCancelled InterruptStatus = "cancelled" // 用户取消
 	InterruptExpired   InterruptStatus = "expired"   // 超时未回应
+	// InterruptSuperseded 表示该草案已被同会话内更新的草案取代。
+	//
+	// 必须有这个状态，不能把旧草案留在 pending：取待确认中断按
+	// 「最新的 pending」选，旧草案若仍待确认，最新草案一旦被解决
+	// 查找就会回落到那份用户从未见过的陈旧草案——下次「确认」即建单。
+	InterruptSuperseded InterruptStatus = "superseded"
 )
 
 // InterruptKind 中断类型。

@@ -218,11 +218,12 @@ func toObservation(result *agent.TurnResult, elapsed time.Duration) eval.TurnObs
 		})
 	}
 	return eval.TurnObservation{
-		Reply:       result.Reply,
-		Interrupted: result.Interrupted,
-		TicketID:    result.TicketID,
-		Tools:       tools,
-		Rounds:      result.Rounds,
+		Reply:                result.Reply,
+		Interrupted:          result.Interrupted,
+		AwaitingConfirmation: result.AwaitingConfirmation,
+		TicketID:             result.TicketID,
+		Tools:                tools,
+		Rounds:               result.Rounds,
 		Usage: eval.TokenUsage{
 			PromptTokens:     result.Usage.PromptTokens,
 			CompletionTokens: result.Usage.CompletionTokens,
@@ -344,7 +345,9 @@ func caseScript(item eval.TrajectoryCase, sabotage string) []*llm.Response {
 		}
 	}
 
-	// 收尾回复：确认恢复那一轮不调用模型，队列耗尽后会重复最后一条，不会越界。
+	// 收尾回复：确认恢复那一轮按设计不调模型，明确取消/确认走的是状态机；
+	// 语义不明或夹带新诉求则会再调一次模型。队列耗尽后重复末条回复，
+	// 因此多出来的调用不会越界写。
 	queue = append(queue, replyResponse("已按你的要求处理完成。"))
 	return queue
 }
