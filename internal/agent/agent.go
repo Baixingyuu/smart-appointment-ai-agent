@@ -42,6 +42,18 @@ type Config struct {
 	ConfirmTTL time.Duration
 	// SystemPrompt 覆盖默认系统提示词，主要用于测试与调优。
 	SystemPrompt string
+	// HistoryMaxMessages 送给模型的历史消息条数上限（不含当前这条）。
+	//
+	// 取 0 走默认值；显式取负值表示关闭历史——保留一个开关，
+	// 便于对照实验判断某次行为变化是否来自历史注入。
+	HistoryMaxMessages int
+	// HistoryMaxItemRunes 单条历史消息投影后的 rune 上限。
+	HistoryMaxItemRunes int
+	// HistoryMaxRunes 历史消息投影后的总 rune 上限。
+	//
+	// 三重上限不是优化而是硬约束：本地模型默认 4k 上下文，
+	// 而系统提示词与工具 schema 已占掉约 850 token。
+	HistoryMaxRunes int
 }
 
 // DefaultConfig 返回默认运行配置。
@@ -49,11 +61,17 @@ type Config struct {
 // MaxToolRounds 取 5：真实模型完成「检索 → 查重 → 起草 → 确认」
 // 需要 4 轮决策，取 3 会在最后一步前被打断（实测）。
 // 留一轮余量给模型纠错（例如首次检索不理想时换措辞重试）。
+//
+// 历史窗口取 6 条：约三轮问答，够覆盖「报障 → 追问 → 再报障」这条
+// 真实主链，再多就开始挤占检索证据的位置。
 func DefaultConfig() Config {
 	return Config{
-		Policy:        tooling.DefaultPolicy(),
-		MaxToolRounds: 5,
-		ConfirmTTL:    2 * time.Hour,
+		Policy:              tooling.DefaultPolicy(),
+		MaxToolRounds:       5,
+		ConfirmTTL:          2 * time.Hour,
+		HistoryMaxMessages:  6,
+		HistoryMaxItemRunes: 220,
+		HistoryMaxRunes:     900,
 	}
 }
 
@@ -64,6 +82,16 @@ func (c Config) normalize() Config {
 	}
 	if c.ConfirmTTL <= 0 {
 		c.ConfirmTTL = def.ConfirmTTL
+	}
+	// 用 == 0 而非 <= 0：负值是"显式关闭历史"的有效输入。
+	if c.HistoryMaxMessages == 0 {
+		c.HistoryMaxMessages = def.HistoryMaxMessages
+	}
+	if c.HistoryMaxItemRunes <= 0 {
+		c.HistoryMaxItemRunes = def.HistoryMaxItemRunes
+	}
+	if c.HistoryMaxRunes <= 0 {
+		c.HistoryMaxRunes = def.HistoryMaxRunes
 	}
 	return c
 }
@@ -266,7 +294,7 @@ func (a *Agent) Run(ctx context.Context, input TurnInput) (*TurnResult, error) {
 		return result, nil
 	}
 
-	messages := []llm.Message{{Role: llm.RoleUser, Content: input.UserMessage}}
+	messages := a.turnMessages(input)
 	return a.runToolLoop(ctx, input, messages, startedAt, result)
 }
 
