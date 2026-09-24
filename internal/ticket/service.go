@@ -6,6 +6,7 @@
 package ticket
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -17,10 +18,15 @@ import (
 )
 
 // Service 工单业务服务。
+//
+// dispatcher 与 directory 是"派单"这条子流程的两个可替换点：
+//   - dispatcher：一期默认 legacyAssigner；接进三段流水线时显式换成 pipelineDispatcher
+//   - directory：默认只提供 Employees；pipeline 需要服务字典与员工扩展时用 WithDirectoryProvider
 type Service struct {
-	store    store.Store
-	assigner *assign.Assigner
-	now      func() time.Time
+	store      store.Store
+	dispatcher Dispatcher
+	directory  DirectoryProvider
+	now        func() time.Time
 }
 
 // workflow 是包级的无状态工作流校验器。
@@ -37,12 +43,39 @@ func WithClock(now func() time.Time) Option {
 	return func(s *Service) { s.now = now }
 }
 
-// New 构造工单服务。
-func New(st store.Store, assigner *assign.Assigner, opts ...Option) *Service {
-	if assigner == nil {
-		assigner = assign.New(assign.DefaultWeights())
+// WithDirectoryProvider 覆盖默认的 DirectoryProvider。
+// pipeline 路径必须注入 provider 才能拿到 Services / Extensions；
+// 不注入时 pipeline 会因为 Services 空判 WeaknessNoServiceMatch，
+// 若无 Stage 2 chooser 就落 Stage 3。这不是 bug，是"没接数据"的正确反应。
+func WithDirectoryProvider(p DirectoryProvider) Option {
+	return func(s *Service) {
+		if p != nil {
+			s.directory = p
+		}
 	}
-	svc := &Service{store: st, assigner: assigner, now: time.Now}
+}
+
+// New 构造工单服务，使用旧的 *assign.Assigner 派单。
+//
+// 保留这个入口是为了让既有 API / 测试 / eval 零改动。接进 pipeline 请显式用 NewWith。
+func New(st store.Store, assigner *assign.Assigner, opts ...Option) *Service {
+	return NewWith(st, NewLegacyDispatcher(assigner), opts...)
+}
+
+// NewWith 用任意 Dispatcher 构造服务。pipeline 走这个入口。
+//
+// dispatcher 为 nil 时回退到 legacy 默认 Assigner，与 New(st, nil) 行为一致。
+// 这样调用方拿不到 dispatcher 时的兜底是"回到一期上线时的行为"，不是 crash。
+func NewWith(st store.Store, dispatcher Dispatcher, opts ...Option) *Service {
+	if dispatcher == nil {
+		dispatcher = NewLegacyDispatcher(nil)
+	}
+	svc := &Service{
+		store:      st,
+		dispatcher: dispatcher,
+		directory:  emptyDirectoryProvider(),
+		now:        time.Now,
+	}
 	for _, opt := range opts {
 		opt(svc)
 	}
@@ -126,6 +159,10 @@ func (s *Service) Create(input domain.TicketInput) (CreateResult, error) {
 // AssignToBest 为工单选择最合适的处理人并落库。
 //
 // excludeEmployeeID 用于升级场景：排除当前处理人，避免把工单又派回给他。
+//
+// ctx 这里固定用 context.Background()：Store 层不感知 ctx，Service 方法签名也没接；
+// 若未来把 request ctx 打通到 Service，Stage 2 的 LLM 调用才能真正被上游取消。
+// 记在 docs/DISPATCH_PIPELINE.md §5 的"未接线事项"里。
 func (s *Service) AssignToBest(ticketID, excludeEmployeeID int64) (domain.AssignmentLog, error) {
 	t, err := s.store.GetTicket(ticketID)
 	if err != nil {
@@ -136,7 +173,11 @@ func (s *Service) AssignToBest(ticketID, excludeEmployeeID int64) (domain.Assign
 	}
 
 	candidates := s.candidates(excludeEmployeeID)
-	log := s.assigner.Assign(t, candidates)
+	dir := s.directory.Provide(candidates)
+	log, err := s.dispatcher.Dispatch(context.Background(), t, dir)
+	if err != nil {
+		return domain.AssignmentLog{}, err
+	}
 	log.TicketID = ticketID
 
 	if err := s.store.AppendAssignmentLog(log); err != nil {

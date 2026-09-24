@@ -14,7 +14,6 @@ import (
 
 	"github.com/mac/helpdesk-agent/internal/agent"
 	"github.com/mac/helpdesk-agent/internal/api"
-	"github.com/mac/helpdesk-agent/internal/assign"
 	"github.com/mac/helpdesk-agent/internal/classify"
 	"github.com/mac/helpdesk-agent/internal/conversation"
 	"github.com/mac/helpdesk-agent/internal/evalrun"
@@ -22,7 +21,6 @@ import (
 	"github.com/mac/helpdesk-agent/internal/rag"
 	"github.com/mac/helpdesk-agent/internal/seed"
 	"github.com/mac/helpdesk-agent/internal/store"
-	"github.com/mac/helpdesk-agent/internal/ticket"
 )
 
 // runServe 启动 HTTP 服务。
@@ -55,7 +53,6 @@ func runServe(args []string) error {
 	if err := seed.Load(st); err != nil {
 		return err
 	}
-	tickets := ticket.New(st, assign.New(assign.DefaultWeights()))
 
 	chatModel, embedder, mode, err := buildModel(*offline, llmConfig{
 		baseURL: *baseURL, apiKey: *apiKey, model: *modelName,
@@ -64,6 +61,7 @@ func runServe(args []string) error {
 	if err != nil {
 		return err
 	}
+	tickets := newTicketService(st, chatModel)
 
 	// 未配置向量模型时使用 BM25 检索（离线可用、无需密钥）；
 	// 配置了向量模型则用稠密向量。

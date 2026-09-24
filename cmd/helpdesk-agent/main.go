@@ -28,6 +28,11 @@ func main() {
 			fmt.Fprintf(os.Stderr, "错误: %v\n", err)
 			os.Exit(1)
 		}
+	case "eval-assign-v2":
+		if err := runEvalAssignV2(os.Args[2:]); err != nil {
+			fmt.Fprintf(os.Stderr, "错误: %v\n", err)
+			os.Exit(1)
+		}
 	case "eval-retrieval":
 		if err := runEvalRetrieval(os.Args[2:]); err != nil {
 			fmt.Fprintf(os.Stderr, "错误: %v\n", err)
@@ -80,6 +85,7 @@ func usage() {
   helpdesk-agent chat [选项]          人工测试对话窗口（每回合轨迹落 JSONL 样本）
   helpdesk-agent demo                 跑一遍完整工单链路（建单/派单/去重/升级/完成）
   helpdesk-agent eval-assign [选项]   运行指派评测
+  helpdesk-agent eval-assign-v2 [选项] 运行三段流水线指派评测（抽取/判弱/排序三轴）
   helpdesk-agent eval-retrieval [选项]  运行检索召回评测
   helpdesk-agent eval-intent [选项]   运行意图分类评测
   helpdesk-agent eval-trajectory [选项]  运行轨迹评测（工具选择/轮次/成本/延迟）
@@ -128,6 +134,13 @@ eval-assign 选项:
   -dataset string   评测集路径，可重复指定（默认同时运行基础集与对抗集）
   -json string      把机读报告写入该路径
   -quiet            只输出汇总
+
+eval-assign-v2 选项:
+  -dataset string   v2 评测集路径（默认 eval/datasets/assignment_v2.json）
+  -json string      把机读报告写入该路径
+  -offline-stage2   不注入 Stage 2 chooser（默认），判弱样本直落 Stage 3；
+                    关掉此标志需要同时提供 LLM 配置：
+  -base-url / -api-key / -model   Stage 2 用的 LLM 服务
 `)
 }
 

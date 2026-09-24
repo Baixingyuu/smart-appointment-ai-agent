@@ -7,6 +7,10 @@
 # 若要作为回归基线长期保存，请显式提交。
 eval/reports/*.json
 
+# 改造 v2 数据集时下载的第三方原始语料（Console-AI MIT / tasksource CC-BY，含 CSV/parquet）。
+# 可凭 eval/datasets/gen_v2.py 里记录的 URL 重新下载，许可归原作者，不入仓。
+eval/raw/
+
 # 编辑器与系统
 .DS_Store
 .idea/

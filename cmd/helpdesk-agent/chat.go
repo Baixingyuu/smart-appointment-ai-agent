@@ -12,14 +12,12 @@ import (
 	"time"
 
 	"github.com/mac/helpdesk-agent/internal/agent"
-	"github.com/mac/helpdesk-agent/internal/assign"
 	"github.com/mac/helpdesk-agent/internal/classify"
 	"github.com/mac/helpdesk-agent/internal/conversation"
 	"github.com/mac/helpdesk-agent/internal/evalrun"
 	"github.com/mac/helpdesk-agent/internal/rag"
 	"github.com/mac/helpdesk-agent/internal/seed"
 	"github.com/mac/helpdesk-agent/internal/store"
-	"github.com/mac/helpdesk-agent/internal/ticket"
 )
 
 // turnSample 一条人工测试样本。
@@ -91,7 +89,7 @@ func runChat(args []string) error {
 	if err := seed.Load(st); err != nil {
 		return err
 	}
-	tickets := ticket.New(st, assign.New(assign.DefaultWeights()))
+	tickets := newTicketService(st, chatModel)
 
 	retriever := seed.NewBM25Retriever(rag.DefaultOptions())
 	if embedder != nil {

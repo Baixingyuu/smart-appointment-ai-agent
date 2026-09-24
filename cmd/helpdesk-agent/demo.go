@@ -4,11 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mac/helpdesk-agent/internal/assign"
 	"github.com/mac/helpdesk-agent/internal/domain"
 	"github.com/mac/helpdesk-agent/internal/seed"
 	"github.com/mac/helpdesk-agent/internal/store"
-	"github.com/mac/helpdesk-agent/internal/ticket"
 )
 
 // runDemo 跑一遍完整工单链路，用于人工验证与演示。
@@ -20,7 +18,7 @@ func runDemo() error {
 	if err := seed.Load(st); err != nil {
 		return err
 	}
-	svc := ticket.New(st, assign.New(assign.DefaultWeights()))
+	svc := newTicketService(st, nil)
 
 	fmt.Println("处理人名册（技能 → 说明）")
 	fmt.Println(strings.Repeat("-", 68))
