@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+data/
+# 标注草稿可重新生成；冻结出的 assignment_gold_v2.json 才入库
+eval/annotation/out/

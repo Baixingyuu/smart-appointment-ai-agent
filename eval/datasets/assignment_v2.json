@@ -1,0 +1,954 @@
+{
+  "version": 2,
+  "pipelineAxes": true,
+  "provenance": {
+    "primary": {
+      "name": "Console-AI/IT-helpdesk-synthetic-tickets",
+      "license": "MIT",
+      "url": "https://huggingface.co/datasets/Console-AI/IT-helpdesk-synthetic-tickets",
+      "use": "工单结构与口语感蓝本；本数据集不复制英文原文，只做中文改写与场景重映射"
+    },
+    "sanity_check": {
+      "name": "tasksource/it-support-tickets",
+      "license": "CC-BY-4.0",
+      "url": "https://huggingface.co/datasets/tasksource/it-support-tickets",
+      "use": "真实工单分布参考（短文本、含掩码实体、多语种）；边界样本按这些模式仿写"
+    }
+  },
+  "goldSource": "formula-derived",
+  "goldBoundary": "抽取段金标(serviceTop1)为手工锁定；判弱/排序段由 gen_v2.py 的 stage1() 复现 internal/assign 的 Stage 1 加权打分 + P0 过滤 + margin 判弱派生，前提是'抽取正确'。因此本数据集证明的是 'pipeline 在给定抽取下的实现 == 我们宣称的规则'，不是外部准确率的人类判断；真实 BM25 多召回第二条过阈值服务会与实际产生偏差（ownership-leak 边界）。对外准确率声明必须挂人工标注卡 —— 见 README。",
+  "description": "三段流水线（Stage 1 规则+检索 / Stage 2 LLM / Stage 3 人工）的评测集。每条 = 一份中文 IT 服务台工单 + 三段金标。",
+  "cases": [
+    {
+      "source": {
+        "kind": "console-ai",
+        "originId": "86eza0fwq",
+        "originCategory": "Software",
+        "originPriority": "High",
+        "originSubject": "Software Conflict Causing App Crashes"
+      },
+      "ticket": {
+        "title": "下单接口频繁 500，客户端拿不到订单号",
+        "description": "从今天上午 10:20 起，线上下单接口持续返回 500，订单无法创建。已经排查网络与机房链路都正常，怀疑与最近的下单服务发布相关。错误率约 35%，全部用户都受影响。",
+        "category": "incident",
+        "priority": "P1"
+      },
+      "expected": {
+        "serviceTop1": 2001,
+        "weakness": "none",
+        "outcome": "matched",
+        "assigneeId": 101
+      },
+      "notes": "服务名字面出现 '下单接口' 与 '订单' + 症状 500，BM25 top-1 应命中 2001；owner 101 senior 直派。",
+      "id": "dp-v2-001"
+    },
+    {
+      "source": {
+        "kind": "handcrafted"
+      },
+      "ticket": {
+        "title": "订单创建接口 P0 挂了",
+        "description": "线上环境下单服务大面积失败，客服反馈订单创建不进去。",
+        "category": "incident",
+        "priority": "P0"
+      },
+      "expected": {
+        "serviceTop1": 2001,
+        "weakness": "none",
+        "outcome": "matched",
+        "assigneeId": 101
+      },
+      "notes": "P0 + owner 是 senior → 直派 101。验证 P0-senior gate 不误伤。",
+      "id": "dp-v2-002"
+    },
+    {
+      "source": {
+        "kind": "handcrafted"
+      },
+      "ticket": {
+        "title": "订单一直转圈",
+        "description": "客户下单一直提交不成功，页面转圈没报错。",
+        "category": "incident",
+        "priority": "P2"
+      },
+      "expected": {
+        "serviceTop1": 2001,
+        "weakness": "none",
+        "outcome": "matched",
+        "assigneeId": 101
+      },
+      "notes": "无 '接口' 关键字，靠 '订单' + '下单' 语义命中；压 BM25 别名覆盖。",
+      "id": "dp-v2-003"
+    },
+    {
+      "source": {
+        "kind": "console-ai",
+        "originId": "f3czsohfi",
+        "originCategory": "Performance",
+        "originPriority": "High",
+        "originSubject": "Enterprise app performance monitoring issue"
+      },
+      "ticket": {
+        "title": "月度经营看板加载 30 秒还没出来",
+        "description": "运营侧同事反馈，从昨晚开始月报看板打开很慢，有时直接超时。临时导出一份数据也报 '查询超时'。",
+        "category": "incident",
+        "priority": "P2"
+      },
+      "expected": {
+        "serviceTop1": 2002,
+        "weakness": "none",
+        "outcome": "matched",
+        "assigneeId": 102
+      },
+      "notes": "命中关键词 '月报' + '看板' + '查询'；owner 102 senior。",
+      "id": "dp-v2-004"
+    },
+    {
+      "source": {
+        "kind": "handcrafted"
+      },
+      "ticket": {
+        "title": "BI 报表导出 Excel 打不开",
+        "description": "客户报导出的 xlsx 打不开，重导几次都是这样。",
+        "category": "incident",
+        "priority": "P3"
+      },
+      "expected": {
+        "serviceTop1": 2002,
+        "weakness": "none",
+        "outcome": "matched",
+        "assigneeId": 102
+      },
+      "notes": "短文本 + 'BI' + '报表' + '导出'；P3 不启用 P0 gate。",
+      "id": "dp-v2-005"
+    },
+    {
+      "source": {
+        "kind": "console-ai",
+        "originId": "u43q44ro8",
+        "originCategory": "Account",
+        "originPriority": "Medium",
+        "originSubject": "Assistance Needed: Password Reset for Email Account"
+      },
+      "ticket": {
+        "title": "账号被锁定，无法登录",
+        "description": "同事本人反馈：连续输错三次密码后账号被锁，现在登录页显示 '账号已锁定，请联系管理员'。已经确认密码是对的。",
+        "category": "request",
+        "priority": "P3"
+      },
+      "expected": {
+        "serviceTop1": 2003,
+        "weakness": "none",
+        "outcome": "matched",
+        "assigneeId": 106
+      },
+      "notes": "命中 '账号' + '登录' + '锁定'；owner 106 mid 非 P0 时可用。",
+      "id": "dp-v2-006"
+    },
+    {
+      "source": {
+        "kind": "handcrafted"
+      },
+      "ticket": {
+        "title": "核心用户全部登录不上，P0 事故",
+        "description": "所有客户登录接口返回 401，客服排队工单 200+。",
+        "category": "incident",
+        "priority": "P0"
+      },
+      "expected": {
+        "serviceTop1": 2003,
+        "weakness": "low_margin",
+        "outcome": "fallback_pool",
+        "assigneeId": 0
+      },
+      "notes": "P0 + owner 106 是 mid → 走 backup 104 senior。压 P0-senior gate 走 backup 分支。",
+      "id": "dp-v2-007"
+    },
+    {
+      "source": {
+        "kind": "handcrafted"
+      },
+      "ticket": {
+        "title": "登不上",
+        "description": "登不上，急。",
+        "category": "incident",
+        "priority": "P2"
+      },
+      "expected": {
+        "serviceTop1": 2003,
+        "weakness": "none",
+        "outcome": "matched",
+        "assigneeId": 106
+      },
+      "notes": "仿 tasksource 真工单里的极短文本。BM25 靠别名 '登录' 单点命中，压最低信息量。",
+      "id": "dp-v2-008"
+    },
+    {
+      "source": {
+        "kind": "console-ai",
+        "originId": "zuj1ksh92",
+        "originCategory": "Licensing",
+        "originPriority": "High",
+        "originSubject": "Software License Activation Failures"
+      },
+      "ticket": {
+        "title": "订阅续费扣款成功但账单未生成",
+        "description": "财务反馈：本批次 40+ 家客户订阅续费扣款都到账，但账单系统里查不到对应单据，客户催发票。",
+        "category": "incident",
+        "priority": "P2"
+      },
+      "expected": {
+        "serviceTop1": 2004,
+        "weakness": "none",
+        "outcome": "matched",
+        "assigneeId": 106
+      },
+      "notes": "'账单' + '扣费' + '订阅' + '发票' 全部命中；owner 106 mid。",
+      "id": "dp-v2-009"
+    },
+    {
+      "source": {
+        "kind": "handcrafted"
+      },
+      "ticket": {
+        "title": "客户咨询：发票开错了能不能重开",
+        "description": "客户来电说上月发票抬头开错，想重开。",
+        "category": "request",
+        "priority": "P3"
+      },
+      "expected": {
+        "serviceTop1": 2004,
+        "weakness": "none",
+        "outcome": "matched",
+        "assigneeId": 106
+      },
+      "notes": "'发票' 关键词单点，request 类型。",
+      "id": "dp-v2-010"
+    },
+    {
+      "source": {
+        "kind": "console-ai",
+        "originId": "fs7blkcux",
+        "originCategory": "Network",
+        "originPriority": "High",
+        "originSubject": "Alert: Inconsistent VPN Connectivity"
+      },
+      "ticket": {
+        "title": "VPN 频繁掉线，办公室多人受影响",
+        "description": "从早上开始，多个部门的同事 VPN 断断续续，重连几次才能上。怀疑专线或对端机房有问题。",
+        "category": "incident",
+        "priority": "P2"
+      },
+      "expected": {
+        "serviceTop1": 2005,
+        "weakness": "none",
+        "outcome": "matched",
+        "assigneeId": 103
+      },
+      "notes": "'VPN'/'网络'/'机房'/'链路' 多个关键词，owner 103 mid。",
+      "id": "dp-v2-011"
+    },
+    {
+      "source": {
+        "kind": "console-ai",
+        "originId": "kz5mjjpox",
+        "originCategory": "Network",
+        "originPriority": "High",
+        "originSubject": "Access Issue with Shared Network Drive"
+      },
+      "ticket": {
+        "title": "内网共享盘打不开",
+        "description": "以前能访问的文件服务器，今天开始一直 '找不到网络路径'。同事里做设计的和做合同的都受影响。",
+        "category": "incident",
+        "priority": "P2"
+      },
+      "expected": {
+        "serviceTop1": 2005,
+        "weakness": "none",
+        "outcome": "matched",
+        "assigneeId": 103
+      },
+      "notes": "'网络路径' + '内网' → 2005。测 BM25 是否会误命中到 2007 Web 控制台（'打不开'）。",
+      "id": "dp-v2-012"
+    },
+    {
+      "source": {
+        "kind": "handcrafted"
+      },
+      "ticket": {
+        "title": "跨机房调用大面积超时",
+        "description": "A 机房访问 B 机房的接口，昨晚 22 点后延迟从 30ms 涨到 3000ms，已经影响业务方。",
+        "category": "incident",
+        "priority": "P1"
+      },
+      "expected": {
+        "serviceTop1": 2005,
+        "weakness": "none",
+        "outcome": "matched",
+        "assigneeId": 103
+      },
+      "notes": "'机房' + '链路' + '超时' 都命中；同时含 '接口' 是 2001 关键词，压歧义。期望 top-1 是 2005（'机房' 出现两次，权重高）。",
+      "id": "dp-v2-013"
+    },
+    {
+      "source": {
+        "kind": "handcrafted"
+      },
+      "ticket": {
+        "title": "私有化部署需要的最低硬件配置",
+        "description": "客户想了解一下私有化部署服务器配置和端口出网要求。",
+        "category": "consultation",
+        "priority": "P3"
+      },
+      "expected": {
+        "serviceTop1": 2006,
+        "weakness": "none",
+        "outcome": "matched",
+        "assigneeId": 103
+      },
+      "notes": "咨询类，命中 '私有化' + '部署' + '硬件要求'；owner 103 mid。",
+      "id": "dp-v2-014"
+    },
+    {
+      "source": {
+        "kind": "console-ai",
+        "originId": "esr24h5h2",
+        "originCategory": "Infrastructure",
+        "originPriority": "High",
+        "originSubject": "VM Snapshots Intermittently Failing"
+      },
+      "ticket": {
+        "title": "现场部署包升级到 v3.2 后启动失败",
+        "description": "客户 A 现场部署，升级包跑起来卡在初始化。日志显示是私有化环境配置项不兼容。",
+        "category": "incident",
+        "priority": "P2"
+      },
+      "expected": {
+        "serviceTop1": 2006,
+        "weakness": "none",
+        "outcome": "matched",
+        "assigneeId": 103
+      },
+      "notes": "'现场部署' + '私有化' + '部署' 都命中。",
+      "id": "dp-v2-015"
+    },
+    {
+      "source": {
+        "kind": "console-ai",
+        "originId": "2apbmy56h",
+        "originCategory": "Security",
+        "originPriority": "High",
+        "originSubject": "Workstation Security Configuration: Inconsistent Group Policies"
+      },
+      "ticket": {
+        "title": "管理控制台某些菜单点了没反应",
+        "description": "客户反馈：控制台首页能进，但订单管理、退款管理这两个菜单点了不响应。浏览器 F12 看到前端报错，跟版本发布有关系。",
+        "category": "incident",
+        "priority": "P2"
+      },
+      "expected": {
+        "serviceTop1": 2007,
+        "weakness": "none",
+        "outcome": "matched",
+        "assigneeId": 105
+      },
+      "notes": "'控制台' + '菜单' + '页面' + '前端' 命中。owner 105 mid。",
+      "id": "dp-v2-016"
+    },
+    {
+      "source": {
+        "kind": "handcrafted"
+      },
+      "ticket": {
+        "title": "管理后台白屏",
+        "description": "客户登录后台以后一片白，什么菜单都出不来。",
+        "category": "incident",
+        "priority": "P1"
+      },
+      "expected": {
+        "serviceTop1": 2007,
+        "weakness": "none",
+        "outcome": "matched",
+        "assigneeId": 105
+      },
+      "notes": "'后台' 是 2007 别名 + '白屏' 是关键词。",
+      "id": "dp-v2-017"
+    },
+    {
+      "source": {
+        "kind": "handcrafted"
+      },
+      "ticket": {
+        "title": "P0：控制台大面积打不开",
+        "description": "多家客户反馈控制台完全打不开，前端报错。",
+        "category": "incident",
+        "priority": "P0"
+      },
+      "expected": {
+        "serviceTop1": 2007,
+        "weakness": "low_margin",
+        "outcome": "fallback_pool",
+        "assigneeId": 0
+      },
+      "notes": "P0 + owner 105 mid + backup 108 junior → P0 gate 把两人都过滤；其他 senior 员工与 2007 无 ownership 关联但仍在候选池里（101/102/104/107）。验证 P0 gate 是否会把 ownership 命中但级别不够的人过滤掉，同时看非 ownership senior 会不会被 top-1（应该走 Stage 1 generic 或 Stage 3）。实际期望：weakness 判定要看 top1/top2 margin —— 如果 4 位 senior 无 ownership 打平，就是 low_margin；如果全部被过滤 empty_candidates。",
+      "id": "dp-v2-018"
+    },
+    {
+      "source": {
+        "kind": "console-ai",
+        "originId": "w163exwly",
+        "originCategory": "RemoteWork",
+        "originPriority": "Medium",
+        "originSubject": "Remote Desktop Access Instructions"
+      },
+      "ticket": {
+        "title": "Mac 端客户端启动后闪退",
+        "description": "从昨晚更新以后，Mac 桌面客户端一打开就闪退。同事里两台电脑都一样。",
+        "category": "incident",
+        "priority": "P2"
+      },
+      "expected": {
+        "serviceTop1": 2008,
+        "weakness": "none",
+        "outcome": "matched",
+        "assigneeId": 105
+      },
+      "notes": "'Mac' + '客户端' + '闪退' 命中。owner 105 mid。",
+      "id": "dp-v2-019"
+    },
+    {
+      "source": {
+        "kind": "handcrafted"
+      },
+      "ticket": {
+        "title": "Windows 端不能自动升级到新版本",
+        "description": "桌面端升级一直失败，卡在小版本更新。",
+        "category": "incident",
+        "priority": "P3"
+      },
+      "expected": {
+        "serviceTop1": 2008,
+        "weakness": "none",
+        "outcome": "matched",
+        "assigneeId": 105
+      },
+      "notes": "'Windows' + '桌面' + '升级' 命中。",
+      "id": "dp-v2-020"
+    },
+    {
+      "source": {
+        "kind": "console-ai",
+        "originId": "cythbyl5p",
+        "originCategory": "Account",
+        "originPriority": "Medium",
+        "originSubject": "Access Request: DB Storage Folder"
+      },
+      "ticket": {
+        "title": "生产 MySQL 连接池打满",
+        "description": "线上数据库连接数持续飙高，业务方反馈 '获取连接超时'。主从切换演练之后开始的。",
+        "category": "incident",
+        "priority": "P1"
+      },
+      "expected": {
+        "serviceTop1": 2009,
+        "weakness": "none",
+        "outcome": "matched",
+        "assigneeId": 102
+      },
+      "notes": "'数据库' + 'MySQL' + '连接池' + '主从' 密集命中。owner 102 senior。",
+      "id": "dp-v2-021"
+    },
+    {
+      "source": {
+        "kind": "handcrafted"
+      },
+      "ticket": {
+        "title": "分库分表路由不对，部分订单落错库",
+        "description": "业务反馈有些订单查询走不到对应分片，怀疑分库分表中间件。",
+        "category": "incident",
+        "priority": "P2"
+      },
+      "expected": {
+        "serviceTop1": 2009,
+        "weakness": "none",
+        "outcome": "matched",
+        "assigneeId": 102
+      },
+      "notes": "'分库分表' 是 2009 别名；'订单' 又落在 2001 关键词里，压歧义。期望 2009 top-1（'分库分表' 只在 2009 出现）。",
+      "id": "dp-v2-022"
+    },
+    {
+      "source": {
+        "kind": "console-ai",
+        "originId": "ejw6honqh",
+        "originCategory": "Security",
+        "originPriority": "Medium",
+        "originSubject": "Request for Instructions on Reporting a Suspected Phishing Email"
+      },
+      "ticket": {
+        "title": "疑似钓鱼邮件在公司邮箱流传",
+        "description": "有员工反馈收到一封伪装成 OA 系统的邮件，已经有人点了。请安全组协助处理。",
+        "category": "incident",
+        "priority": "P1"
+      },
+      "expected": {
+        "serviceTop1": 2010,
+        "weakness": "none",
+        "outcome": "matched",
+        "assigneeId": 104
+      },
+      "notes": "'安全' + '合规' 相关；owner 104 senior。文本没出现 '安全' 关键词，但'钓鱼邮件' 是 2010 常见场景。压 BM25 语义泛化边界——可能落 low_margin。",
+      "id": "dp-v2-023"
+    },
+    {
+      "source": {
+        "kind": "handcrafted"
+      },
+      "ticket": {
+        "title": "P0 漏洞响应：外部报了一个 RCE",
+        "description": "外部安全团队上报，管理台某接口存在远程代码执行漏洞，需要立即加固。",
+        "category": "incident",
+        "priority": "P0"
+      },
+      "expected": {
+        "serviceTop1": 2010,
+        "weakness": "none",
+        "outcome": "matched",
+        "assigneeId": 104
+      },
+      "notes": "P0 + owner 104 senior。'漏洞' + '加固' + '安全' 密集命中。",
+      "id": "dp-v2-024"
+    },
+    {
+      "source": {
+        "kind": "console-ai",
+        "originId": "ujwveoos9",
+        "originCategory": "Infrastructure",
+        "originPriority": "High",
+        "originSubject": "Enterprise Email Archiving Retrieval Issues"
+      },
+      "ticket": {
+        "title": "上下游数据同步延迟两小时",
+        "description": "客户订单同步到数据仓库，昨天开始延迟两小时；定时任务积压，对账对不上。",
+        "category": "incident",
+        "priority": "P2"
+      },
+      "expected": {
+        "serviceTop1": 2011,
+        "weakness": "none",
+        "outcome": "matched",
+        "assigneeId": 101
+      },
+      "notes": "'同步' + '延迟' + '对账' + '任务' 命中 2011。owner 101 senior。'订单' 又是 2001 关键词，压歧义。",
+      "id": "dp-v2-025"
+    },
+    {
+      "source": {
+        "kind": "handcrafted"
+      },
+      "ticket": {
+        "title": "数据不同步，报表看不到昨天的数",
+        "description": "数据同步任务今天没跑，看板数据还是前天的。",
+        "category": "incident",
+        "priority": "P3"
+      },
+      "expected": {
+        "serviceTop1": 2011,
+        "weakness": "none",
+        "outcome": "matched",
+        "assigneeId": 101
+      },
+      "notes": "'数据不同步' 是 2011 别名；'报表' + '看板' 是 2002 关键词。top-1 应该是 2011（'同步' 只出现在 2011）。这条压 BM25 是否会误命中到 2002。",
+      "id": "dp-v2-026"
+    },
+    {
+      "source": {
+        "kind": "console-ai",
+        "originId": "1aiu3lrqi",
+        "originCategory": "Network",
+        "originPriority": "Medium",
+        "originSubject": "Our network printer keeps disconnecting"
+      },
+      "ticket": {
+        "title": "办公室打印机老断连",
+        "description": "打印机隔一会儿就掉线，需要重新配 IP 才能用。同事好几位都反应同样问题。",
+        "category": "incident",
+        "priority": "P3"
+      },
+      "expected": {
+        "serviceTop1": 2012,
+        "weakness": "none",
+        "outcome": "matched",
+        "assigneeId": 103
+      },
+      "notes": "'打印机' 只出现在 2012 关键词；owner 103 mid。'网络'/'IP'/'断' 又落在 2005，压 BM25 优先级。",
+      "id": "dp-v2-027"
+    },
+    {
+      "source": {
+        "kind": "console-ai",
+        "originId": "dn74utk13",
+        "originCategory": "Hardware",
+        "originPriority": "High",
+        "originSubject": "Persistent Issues with Biometric Authentication System"
+      },
+      "ticket": {
+        "title": "POS 机扫脸设备失灵",
+        "description": "门店 POS 终端的指纹/面部识别一直识别不到，需要现场检修。",
+        "category": "incident",
+        "priority": "P2"
+      },
+      "expected": {
+        "serviceTop1": 2012,
+        "weakness": "none",
+        "outcome": "matched",
+        "assigneeId": 103
+      },
+      "notes": "'POS' + '终端' 命中 2012 别名；'识别' 可能牵到 2013 令牌。",
+      "id": "dp-v2-028"
+    },
+    {
+      "source": {
+        "kind": "console-ai",
+        "originId": "rhxsdvazi",
+        "originCategory": "Hardware",
+        "originPriority": "Medium",
+        "originSubject": "Dual Monitor Display Issue"
+      },
+      "ticket": {
+        "title": "工位服务器硬盘灯亮红灯",
+        "description": "机房一台老服务器的硬盘故障灯亮了，系统还能跑，先做个排查。",
+        "category": "incident",
+        "priority": "P2"
+      },
+      "expected": {
+        "serviceTop1": 2012,
+        "weakness": "none",
+        "outcome": "matched",
+        "assigneeId": 103
+      },
+      "notes": "'服务器' + '硬盘' 都是 2012 关键词。'机房' 在 2005 出现，压歧义。",
+      "id": "dp-v2-029"
+    },
+    {
+      "source": {
+        "kind": "console-ai",
+        "originId": "1sj8czs0k",
+        "originCategory": "Security",
+        "originPriority": "High",
+        "originSubject": "Persistent Authentication Failures with MFA"
+      },
+      "ticket": {
+        "title": "接口大量返回 401，token 刷新失败",
+        "description": "外部合作方调用我们接口，反馈 401 一直拿不到有效 token。我们内部鉴权服务日志里看到大量 '签名校验不通过'。",
+        "category": "incident",
+        "priority": "P1"
+      },
+      "expected": {
+        "serviceTop1": 2013,
+        "weakness": "none",
+        "outcome": "matched",
+        "assigneeId": 101
+      },
+      "notes": "'401' + 'token' + '鉴权' + '签名' 密集命中。owner 101 senior。",
+      "id": "dp-v2-030"
+    },
+    {
+      "source": {
+        "kind": "console-ai",
+        "originId": "7rh5ne450",
+        "originCategory": "Hardware",
+        "originPriority": "Medium",
+        "originSubject": "Instructions for Configuring Multiple Monitors"
+      },
+      "ticket": {
+        "title": "令牌过期后没有触发刷新",
+        "description": "客户端反馈访问某些接口一直 401，重启才能好一会儿。",
+        "category": "incident",
+        "priority": "P2"
+      },
+      "expected": {
+        "serviceTop1": 2013,
+        "weakness": "none",
+        "outcome": "matched",
+        "assigneeId": 101
+      },
+      "notes": "'令牌' 是 2013 别名；'接口' 又出现在 2001。压 BM25。",
+      "id": "dp-v2-031"
+    },
+    {
+      "source": {
+        "kind": "console-ai",
+        "originId": "l0nhq0pys",
+        "originCategory": "Account",
+        "originPriority": "Medium",
+        "originSubject": "JIRA Board Access Request"
+      },
+      "ticket": {
+        "title": "内部工具台权限申请：客服需要看工单后台",
+        "description": "新入职客服需要访问工单后台与内部知识库，走审批流程申请权限。",
+        "category": "request",
+        "priority": "P3"
+      },
+      "expected": {
+        "serviceTop1": 2014,
+        "weakness": "none",
+        "outcome": "matched",
+        "assigneeId": 107
+      },
+      "notes": "'内部工具' + '工单' + '客服' 都命中 2014。owner 107 senior。",
+      "id": "dp-v2-032"
+    },
+    {
+      "source": {
+        "kind": "console-ai",
+        "originId": "tso616mbn",
+        "originCategory": "Software",
+        "originPriority": "Medium",
+        "originSubject": "Software Access: Asana Project for Jordan Smith"
+      },
+      "ticket": {
+        "title": "工具台某个跨系统入口报 500",
+        "description": "点开工单后台的 '关联客户' 按钮返回 500，其他同事也复现不了。",
+        "category": "incident",
+        "priority": "P2"
+      },
+      "expected": {
+        "serviceTop1": 2014,
+        "weakness": "none",
+        "outcome": "matched",
+        "assigneeId": 107
+      },
+      "notes": "'工具台' + '工单' 命中。'500' 也在 2001 关键词里，压歧义。",
+      "id": "dp-v2-033"
+    },
+    {
+      "source": {
+        "kind": "handcrafted"
+      },
+      "ticket": {
+        "title": "预约会议室",
+        "description": "行政帮忙订一个明天下午 3 点的会议室。",
+        "category": "request",
+        "priority": "P3"
+      },
+      "expected": {
+        "serviceTop1": 0,
+        "weakness": "no_service_match",
+        "outcome": "fallback_pool",
+        "assigneeId": 0
+      },
+      "notes": "无关请求，14 服务字典里没这条。BM25 top-1 应该 < 0.25 → 判 no_service_match。压 ServiceMatchFloor 的下界。",
+      "id": "dp-v2-034"
+    },
+    {
+      "source": {
+        "kind": "handcrafted"
+      },
+      "ticket": {
+        "title": "报修下单接口 500，另外 VPN 也断了",
+        "description": "客户下单一直失败；顺便我们这边 VPN 也不稳定，两件事一起看下。",
+        "category": "incident",
+        "priority": "P2"
+      },
+      "expected": {
+        "serviceTop1": 2001,
+        "weakness": "none",
+        "outcome": "matched",
+        "assigneeId": 101
+      },
+      "notes": "混合意图：2001 + 2005 都在文本里。top-1 应该 2001（'下单' 只出现在 2001 别名），派给 owner 101。测 BM25 在多命中下的 top-1 稳定性。",
+      "id": "dp-v2-035"
+    },
+    {
+      "source": {
+        "kind": "handcrafted"
+      },
+      "ticket": {
+        "title": "老板说系统崩了",
+        "description": "老板反馈系统坏了，具体不清楚。",
+        "category": "incident",
+        "priority": "P2"
+      },
+      "expected": {
+        "serviceTop1": 0,
+        "weakness": "no_service_match",
+        "outcome": "fallback_pool",
+        "assigneeId": 0
+      },
+      "notes": "极低信息量。仿 tasksource 真工单里的 'impressora com erro'（打印机报错，一词短文本）。字典里没有 '系统' 别名，BM25 应该给不出可信命中。",
+      "id": "dp-v2-036"
+    },
+    {
+      "source": {
+        "kind": "handcrafted"
+      },
+      "ticket": {
+        "title": "客户投诉：账单金额不对",
+        "description": "客户要求核对上月账单差异，怀疑是计费系统的账单生成有 bug。",
+        "category": "incident",
+        "priority": "P2"
+      },
+      "expected": {
+        "serviceTop1": 2004,
+        "weakness": "none",
+        "outcome": "matched",
+        "assigneeId": 106
+      },
+      "notes": "'账单' 密集出现在 2004；'计费' 也是。这条测正例 margin 稳定。",
+      "id": "dp-v2-037"
+    },
+    {
+      "source": {
+        "kind": "handcrafted"
+      },
+      "ticket": {
+        "title": "登录后台看不到菜单",
+        "description": "用户中心登进来后管理台一片空白。",
+        "category": "incident",
+        "priority": "P2"
+      },
+      "expected": {
+        "serviceTop1": 2007,
+        "weakness": "none",
+        "outcome": "matched",
+        "assigneeId": 105
+      },
+      "notes": "两个服务都可能出现：2003 (登录/用户中心) 与 2007 (后台/控制台/白屏)。期望 top-1 是 2007（'后台' 与 '白屏/一片空白' 语义更近）。压 BM25 谁赢。",
+      "id": "dp-v2-038"
+    },
+    {
+      "source": {
+        "kind": "handcrafted"
+      },
+      "ticket": {
+        "title": "同步任务和接口调用一起挂了",
+        "description": "数据同步任务大面积失败，同时下游调用返回超时。",
+        "category": "incident",
+        "priority": "P1"
+      },
+      "expected": {
+        "serviceTop1": 2011,
+        "weakness": "none",
+        "outcome": "matched",
+        "assigneeId": 101
+      },
+      "notes": "两个服务都可能：2011 (同步/任务) 与 2001 (接口)。owner 都是 101。top1/top2 分差可能 < 0.15 → low_margin → 走 Stage 2；本 runner 里 chooser=nil → 直落 Stage 3。压 MarginThreshold 上界。",
+      "id": "dp-v2-039"
+    },
+    {
+      "source": {
+        "kind": "handcrafted"
+      },
+      "ticket": {
+        "title": "P0：数据库集群挂了没人能连",
+        "description": "订单和报表都受影响，客户全部投诉。",
+        "category": "incident",
+        "priority": "P0"
+      },
+      "expected": {
+        "serviceTop1": 2009,
+        "weakness": "none",
+        "outcome": "matched",
+        "assigneeId": 102
+      },
+      "notes": "描述里没有 '数据库' 关键词，但标题里有。owner 102 senior。P0 + '订单' + '报表' 会牵出 2001/2002 干扰；压 BM25 短描述 + 强标题场景。",
+      "id": "dp-v2-040"
+    },
+    {
+      "source": {
+        "kind": "handcrafted"
+      },
+      "ticket": {
+        "title": "员工咨询：VPN 密码是什么规则",
+        "description": "新同事问 VPN 密码的构成规则是什么。",
+        "category": "consultation",
+        "priority": "P3"
+      },
+      "expected": {
+        "serviceTop1": 2005,
+        "weakness": "none",
+        "outcome": "matched",
+        "assigneeId": 103
+      },
+      "notes": "咨询类 + 'VPN' 命中 2005。测非 incident 类目的分类不影响 BM25 打分。",
+      "id": "dp-v2-041"
+    },
+    {
+      "source": {
+        "kind": "handcrafted"
+      },
+      "ticket": {
+        "title": "订单接口和令牌接口都在报错",
+        "description": "客户端调用下单接口返回 401，同时鉴权服务日志刷 '签名过期'。",
+        "category": "incident",
+        "priority": "P1"
+      },
+      "expected": {
+        "serviceTop1": 2013,
+        "weakness": "none",
+        "outcome": "matched",
+        "assigneeId": 101
+      },
+      "notes": "两个 owner 都是 101（2001 owner=101，2013 owner=101），所以派谁赢都是 101；但 top-1 服务判定要看 BM25 —— '401' 只在 2013 出现，'签名' 也是，应该 top-1=2013。测 owner 相同但 top-1 服务正确的场景，抽取轴独立于排序轴。",
+      "id": "dp-v2-042"
+    },
+    {
+      "source": {
+        "kind": "handcrafted"
+      },
+      "ticket": {
+        "title": "系统整体变慢了",
+        "description": "感觉整个系统访问都很慢，说不上来哪个模块。",
+        "category": "incident",
+        "priority": "P3"
+      },
+      "expected": {
+        "serviceTop1": 0,
+        "weakness": "no_service_match",
+        "outcome": "fallback_pool",
+        "assigneeId": 0
+      },
+      "notes": "'慢' 是 2002/2009 关键词但没其他锚点；文本没有指名任何具体服务。压 BM25 在 '什么都像但又都不像' 场景下是否会给出虚高 top-1。",
+      "id": "dp-v2-043"
+    },
+    {
+      "source": {
+        "kind": "handcrafted"
+      },
+      "ticket": {
+        "title": "硬件到货，请运维来搬",
+        "description": "一批服务器上架到货，需要运维协助搬到机房。",
+        "category": "request",
+        "priority": "P3"
+      },
+      "expected": {
+        "serviceTop1": 2012,
+        "weakness": "none",
+        "outcome": "matched",
+        "assigneeId": 103
+      },
+      "notes": "'硬件' + '服务器' 命中 2012；'机房' 又落在 2005，压歧义。owner 103 相同（都是运维），所以派谁赢一样；抽取轴能区分才有意义。",
+      "id": "dp-v2-044"
+    },
+    {
+      "source": {
+        "kind": "handcrafted"
+      },
+      "ticket": {
+        "title": "订单查询走了老库",
+        "description": "订单查询接口好像走的不是新数据库，帮忙看看是不是路由不对。",
+        "category": "incident",
+        "priority": "P2"
+      },
+      "expected": {
+        "serviceTop1": 2009,
+        "weakness": "none",
+        "outcome": "matched",
+        "assigneeId": 102
+      },
+      "notes": "跨三个服务的措辞：订单(2001)/查询(2002)/数据库(2009)。'路由不对' 语义上更像 2009 分库分表；测 BM25 在 3 关键词密集场景的 top-1 稳定性。如果最终判为 low_margin 也是可接受结果 —— 只要与 expectedWeakness 一致。",
+      "id": "dp-v2-045"
+    }
+  ]
+}

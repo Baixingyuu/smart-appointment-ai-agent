@@ -1,0 +1,83 @@
+{
+  "generatedAt": "2026-09-25T17:41:28+00:00",
+  "mode": "offline-deterministic",
+  "embedModel": "bge-m3",
+  "chatModel": "qwen3:8b",
+  "sabotage": [],
+  "axis": "retrieval",
+  "topK": 10,
+  "dataset": "retrieval.json",
+  "metrics": {
+    "n": 90,
+    "nAnswerable": 80,
+    "nUnanswerable": 10,
+    "recallAt": {
+      "1": 0.85,
+      "3": 0.9375,
+      "5": 0.9625
+    },
+    "mrr": 0.8995,
+    "unanswerableTop1": {
+      "min": 0.4228,
+      "p50": 0.4695,
+      "max": 0.5439
+    },
+    "thresholdSweep": [
+      {
+        "threshold": 0.3,
+        "answerable_pass": 1.0,
+        "unanswerable_leak": 1.0
+      },
+      {
+        "threshold": 0.35,
+        "answerable_pass": 1.0,
+        "unanswerable_leak": 1.0
+      },
+      {
+        "threshold": 0.4,
+        "answerable_pass": 1.0,
+        "unanswerable_leak": 1.0
+      },
+      {
+        "threshold": 0.45,
+        "answerable_pass": 1.0,
+        "unanswerable_leak": 0.6
+      },
+      {
+        "threshold": 0.5,
+        "answerable_pass": 1.0,
+        "unanswerable_leak": 0.3
+      },
+      {
+        "threshold": 0.55,
+        "answerable_pass": 0.9375,
+        "unanswerable_leak": 0.0
+      },
+      {
+        "threshold": 0.6,
+        "answerable_pass": 0.8625,
+        "unanswerable_leak": 0.0
+      },
+      {
+        "threshold": 0.65,
+        "answerable_pass": 0.6,
+        "unanswerable_leak": 0.0
+      },
+      {
+        "threshold": 0.7,
+        "answerable_pass": 0.2,
+        "unanswerable_leak": 0.0
+      },
+      {
+        "threshold": 0.75,
+        "answerable_pass": 0.0625,
+        "unanswerable_leak": 0.0
+      },
+      {
+        "threshold": 0.8,
+        "answerable_pass": 0.0,
+        "unanswerable_leak": 0.0
+      }
+    ]
+  }
+}
