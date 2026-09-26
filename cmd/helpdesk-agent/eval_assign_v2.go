@@ -19,8 +19,8 @@ import (
 // 这是最省心的评测姿态 —— 三段的期望都在 (Stage 1 ∪ Stage 3) 的路径上；
 // Stage 2 想单独评测请配 -base-url/-api-key/-model 或改用 ScriptedChooser 走单测。
 //
-// 与 v1 eval-assign 的分工：v1 只测排序段（旧 Assigner + 120+30 数据集），
-// v2 拆三段各打一次分。两者并行保留、互不替代；见 docs/DISPATCH_PIPELINE.md §5.1。
+// 派单轴只有这一个：v1 的技能 Jaccard 派单器连同 120+30 数据集已删除，
+// 本命令测的就是三段流水线本身，三轴各自独立计数。见 docs/DISPATCH_PIPELINE.md §5。
 func runEvalAssignV2(args []string) error {
 	fs := flag.NewFlagSet("eval-assign-v2", flag.ContinueOnError)
 	datasetPath := fs.String("dataset", "", "v2 评测集路径（默认 eval/datasets/assignment_v2.json）")

@@ -425,6 +425,5 @@ func TestLoadRealTrajectoryDataset(t *testing.T) {
 const (
 	ToolRAGSearchConst = "rag_search"
 	ToolFindConst      = "ticket_find_open_by_topic"
-	ToolDraftConst     = "ticket_create_draft"
 	ToolConfirmConst   = "ticket_create_confirm"
 )

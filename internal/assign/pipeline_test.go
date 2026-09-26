@@ -71,8 +71,9 @@ func strongServiceResolver() StaticServiceResolver {
 
 func TestPipeline_Stage1OwnerWins(t *testing.T) {
 	dir := fixtureDirectory()
-	chooser := NewScriptedChooser(nil) // 不应被调用
-	p := NewPipeline(strongServiceResolver(), NoopSimilarIndex{}, chooser)
+	// 无 chooser 模式（LLM-primary 化后的 Stage 1 直出路径）：
+	// 离线评测 / 无模型部署走的就是这条；强命中时 owner 直派。
+	p := NewPipeline(strongServiceResolver(), NoopSimilarIndex{}, nil)
 
 	d, err := p.Run(context.Background(), fixtureTicket(1, domain.PriorityP2), dir)
 	if err != nil {
@@ -89,9 +90,6 @@ func TestPipeline_Stage1OwnerWins(t *testing.T) {
 	}
 	if d.Weakness != WeaknessNone {
 		t.Errorf("期望 weakness=none，实际 %s", d.Weakness)
-	}
-	if chooser.CallCount() != 0 {
-		t.Errorf("Stage 1 直出时不应调用 chooser，实际调了 %d 次", chooser.CallCount())
 	}
 }
 
@@ -122,7 +120,7 @@ func TestPipeline_P0GateExcludesJuniorAndMid(t *testing.T) {
 	dir := fixtureDirectory()
 	// 让 owner 之外的员工负载全为 0，保证他们本可以因负载/响应胜出；
 	// 若 P0 gate 未生效，13/14 里至少有一位能挤进候选。
-	p := NewPipeline(strongServiceResolver(), NoopSimilarIndex{}, NewScriptedChooser(nil))
+	p := NewPipeline(strongServiceResolver(), NoopSimilarIndex{}, nil)
 
 	d, err := p.Run(context.Background(), fixtureTicket(1, domain.PriorityP0), dir)
 	if err != nil {
@@ -289,10 +287,11 @@ func TestSabotage_OwnershipDisabledChangesWinner(t *testing.T) {
 	// 但 14 是 junior 会被 P0 gate 拦，P2 不受影响。
 	dir.Employees[3].Recency = 1.00 // 员工 14
 
-	normal := NewPipeline(strongServiceResolver(), NoopSimilarIndex{}, NewScriptedChooser(nil))
+	// 无 chooser 模式：本测的是 Stage 1 打分特征是否承重，直出路径才反映排序变化。
+	normal := NewPipeline(strongServiceResolver(), NoopSimilarIndex{}, nil)
 	normalWinner := mustRun(t, normal, dir)
 
-	sab := NewPipeline(strongServiceResolver(), NoopSimilarIndex{}, NewScriptedChooser(nil),
+	sab := NewPipeline(strongServiceResolver(), NoopSimilarIndex{}, nil,
 		WithoutOwnershipBoost())
 	sabWinner := mustRun(t, sab, dir)
 
@@ -304,37 +303,28 @@ func TestSabotage_OwnershipDisabledChangesWinner(t *testing.T) {
 	}
 }
 
-// MarginThreshold=0 会让 LowMargin 永远不触发；本应升级的样本被直派。
-func TestSabotage_MarginZeroHidesLowMargin(t *testing.T) {
+// Margin 阈值自 2026-09-25 起不再承重（降级为观测标注）：注入 chooser 后无论
+// margin 高低，每张非阻塞工单都走 Stage 2。这条测试守住该降级不被悄悄回退——
+// 若有人把 margin 重新变成"闸门"（margin=0 时跳过 Stage 2），这里会失败。
+func TestPipeline_MarginNoLongerGatesStage2(t *testing.T) {
 	dir := fixtureDirectory()
 	chooser := NewScriptedChooser(map[int64]ScriptedChoice{
-		1: {AssigneeID: 12, Rationale: "backup", Confidence: 0.5},
+		1: {AssigneeID: 11, Rationale: "owner", Confidence: 0.7},
 	})
-	// 基线：margin=0.30（略高于 owner/backup 实测差 0.285）→ 升级到 Stage 2 → chooser 挑 12
-	cfgNormal := DefaultPipelineConfig()
-	cfgNormal.MarginThreshold = 0.30
-	normal := NewPipeline(strongServiceResolver(), NoopSimilarIndex{}, chooser, WithPipelineConfig(cfgNormal))
-	normalDecision := mustRun(t, normal, dir)
-	if normalDecision.Path != PathStage2LLM {
-		t.Fatalf("基线：期望 Stage 2 被触发，实际 path=%s", normalDecision.Path)
-	}
-	if normalDecision.AssigneeID != 12 {
-		t.Fatalf("基线：期望采纳 chooser 的 12，实际 %d", normalDecision.AssigneeID)
-	}
+	// margin=0（旧语义下"从不升级"）+ 强命中样本：Stage 2 仍必须被调用。
+	cfg := DefaultPipelineConfig()
+	cfg.MarginThreshold = 0
+	p := NewPipeline(strongServiceResolver(), NoopSimilarIndex{}, chooser, WithPipelineConfig(cfg))
 
-	// sabotage：margin=0 → 从不因低差距升级 → owner 直派，chooser 未调用。
-	chooser2 := NewScriptedChooser(map[int64]ScriptedChoice{
-		1: {AssigneeID: 12, Rationale: "backup", Confidence: 0.5},
-	})
-	cfgSab := DefaultPipelineConfig()
-	cfgSab.MarginThreshold = 0
-	sab := NewPipeline(strongServiceResolver(), NoopSimilarIndex{}, chooser2, WithPipelineConfig(cfgSab))
-	sabDecision := mustRun(t, sab, dir)
-	if sabDecision.Stage2Used {
-		t.Errorf("sabotage：期望 Stage 2 未触发，实际触发了（path=%s）", sabDecision.Path)
+	d := mustRun(t, p, dir)
+	if !d.Stage2Used {
+		t.Fatalf("margin 已降级为观测：注入 chooser 时强命中也须走 Stage 2，实际 path=%s", d.Path)
 	}
-	if sabDecision.AssigneeID != 11 {
-		t.Errorf("sabotage：期望回到 owner 11 直派，实际 %d", sabDecision.AssigneeID)
+	if chooser.CallCount() != 1 {
+		t.Errorf("期望 chooser 被调用 1 次，实际 %d 次", chooser.CallCount())
+	}
+	if d.Weakness != WeaknessNone {
+		t.Errorf("强命中样本的 weakness 观测应为 none，实际 %s", d.Weakness)
 	}
 }
 
@@ -370,7 +360,7 @@ func TestSabotage_DisableEnumGuardLeedsToBadOutcome(t *testing.T) {
 
 func TestDecisionToAssignmentLogMapsCoreFields(t *testing.T) {
 	dir := fixtureDirectory()
-	p := NewPipeline(strongServiceResolver(), NoopSimilarIndex{}, NewScriptedChooser(nil))
+	p := NewPipeline(strongServiceResolver(), NoopSimilarIndex{}, nil)
 	d := mustRun(t, p, dir)
 
 	log := d.ToAssignmentLog()

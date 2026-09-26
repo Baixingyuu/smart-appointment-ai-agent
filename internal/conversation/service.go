@@ -9,6 +9,7 @@
 package conversation
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -23,7 +24,7 @@ import (
 // 抽象为接口而非直接依赖 agent 包：会话编排不应绑定具体编排实现，
 // 测试也可注入桩。
 type TurnExecutor interface {
-	Execute(conversationID int64, message string) (TurnOutcome, error)
+	Execute(ctx context.Context, conversationID int64, message string) (TurnOutcome, error)
 }
 
 // TurnOutcome 一次回合的结果。
@@ -34,11 +35,11 @@ type TurnOutcome struct {
 }
 
 // TurnExecutorFunc 便于用函数构造 TurnExecutor。
-type TurnExecutorFunc func(conversationID int64, message string) (TurnOutcome, error)
+type TurnExecutorFunc func(ctx context.Context, conversationID int64, message string) (TurnOutcome, error)
 
 // Execute 实现 TurnExecutor。
-func (f TurnExecutorFunc) Execute(conversationID int64, message string) (TurnOutcome, error) {
-	return f(conversationID, message)
+func (f TurnExecutorFunc) Execute(ctx context.Context, conversationID int64, message string) (TurnOutcome, error) {
+	return f(ctx, conversationID, message)
 }
 
 // Service 会话服务。
@@ -111,7 +112,7 @@ type SendResult struct {
 // 幂等语义：RequestID 重复时直接返回 Duplicate 而不报错。
 // 返回错误会让客户端重试，重试又会再次命中重复——用 Duplicate 标记
 // 比用错误更利于调用方区分「重复」与「真失败」。
-func (s *Service) Send(conversationID int64, content, requestID string) (SendResult, error) {
+func (s *Service) Send(ctx context.Context, conversationID int64, content, requestID string) (SendResult, error) {
 	content = strings.TrimSpace(content)
 	if content == "" {
 		return SendResult{}, errors.New("消息内容不能为空")
@@ -146,7 +147,7 @@ func (s *Service) Send(conversationID int64, content, requestID string) (SendRes
 		return result, nil
 	}
 
-	outcome, err := s.executor.Execute(conversationID, content)
+	outcome, err := s.executor.Execute(ctx, conversationID, content)
 	if err != nil {
 		// AI 失败不应丢失客户消息：消息已经落库，错误向上返回让调用方
 		// 决定是否转人工，而不是把整条消息回滚掉。

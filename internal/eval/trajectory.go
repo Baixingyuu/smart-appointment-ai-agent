@@ -217,6 +217,14 @@ type TrajectoryReport struct {
 	Failures []CaseResult `json:"failures,omitempty"`
 }
 
+// ScenarioStat 按场景聚合的通过数，用于定位退化集中在哪一类场景，
+// 而不是只看一个被平均值抹平的总通过率。
+type ScenarioStat struct {
+	Total  int     `json:"total"`
+	Passed int     `json:"passed"`
+	Rate   float64 `json:"rate"`
+}
+
 // Run 执行轨迹评测。
 func Run(dataset *TrajectoryDataset, runner Runner) TrajectoryReport {
 	report := TrajectoryReport{

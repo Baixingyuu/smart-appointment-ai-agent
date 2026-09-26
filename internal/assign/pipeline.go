@@ -1,15 +1,15 @@
-// Package assign 的三段流水线（Stage 1 规则+检索 / Stage 2 LLM / Stage 3 人工）。
+// Package assign 的三段流水线（Stage 1 检索+过滤+短名单 / Stage 2 LLM 主判 / Stage 3 人工）。
 //
 // 本文件只放共享类型、配置与编排。Stage 1 五个子段各自的文件见
 // resolve.go / candidates.go / eligibility.go / score.go / weakness.go；
 // Stage 2 的 LLM 实现见 llm_chooser.go / scripted_chooser.go。
 //
-// 设计文档：docs/DISPATCH_PIPELINE.md。
+// 决策模式（2026-09-25 起，LLM-primary）：注入 chooser 时，Stage 1 的加权打分只负责
+// 给 Stage 2 排一份 top-K 短名单——五档权重、margin、floor 都是经验参数，不再直接
+// 决定派给谁；最终决策由 Stage 2 的 LLM 在候选 enum 内给出（rationale 落库可审计）。
+// 未注入 chooser（离线评测 / scripted）时退化为 Stage 1 直出，离线口径不变。
 //
-// 与现有 Assigner 的关系：pipeline 不复用 Assigner.Assign。原因见 §设计文档 5，
-// 摘要：ownership 特征是三档不同权重（owner / backup / team），
-// 用 Jaccard 硬套会引入"虚拟技能"的权宜 hack；从 Assigner 借的只有
-// tiebreak 顺序与 nearlyEqual 误差容忍两件确定性资产，在 score.go 重实现。
+// 设计文档：docs/DISPATCH_PIPELINE.md（§1.5 判弱闸的描述以本注释为准，已降级为观测）。
 package assign
 
 import (
@@ -55,11 +55,9 @@ const (
 	WeaknessEmptyCandidates WeaknessReason = "empty_candidates" // 过滤后无候选人，直送 Stage 3
 )
 
-// FeatureWeights 是 Stage 1 打分器的五档权重。
+// FeatureWeights 是 Stage 1 打分器的五档权重，即派单的全部依据。
 //
-// 命名带 Feature 前缀以避开与同包 Weights（旧 Assigner 用）冲突。
-// Skill 权重不在此：Stage 1 不用 Jaccard 打技能分，见 §设计文档 1.4。
-// 保留字段扩展位是因为真实场景里技能仍是弱特征，一期设 0 但接口先留。
+// 没有技能档：技能既不是真实业务的派发依据，也不作为特征位预留。
 type FeatureWeights struct {
 	Ownership float64
 	Similar   float64
@@ -71,8 +69,7 @@ type FeatureWeights struct {
 // DefaultFeatureWeights 返回一期默认权重（0.40 / 0.20 / 0.20 / 0.10 / 0.10）。
 //
 // 为什么 ownership 一家独大：真实业务里"是不是这个系统的负责人"压倒其他信号，
-// 其他四项是次级调节。等权会让"最闲的人"频繁盖过"最懂的人"——
-// 这与现有 Assigner 的 DefaultWeights 走过的坑同源。
+// 其他四项是次级调节。等权会让"最闲的人"频繁盖过"最懂的人"。
 func DefaultFeatureWeights() FeatureWeights {
 	return FeatureWeights{Ownership: 0.40, Similar: 0.20, Avail: 0.20, Seniority: 0.10, Recency: 0.10}
 }
@@ -159,9 +156,9 @@ func (d Directory) ServiceOf(serviceID int64) (domain.Service, bool) {
 
 // Candidate 是 Stage 1 打分器的输出条目，一条对应一位员工。
 //
-// 不叫 CandidateScore 是为了避免与 domain.CandidateScore 混淆：
-// 后者字段是 SkillScore/LoadScore/RecencyScore 三段旧模型，
-// 前者是新的五特征模型。二者通过 Decision.ToAssignmentLog 单向映射。
+// 与 domain.CandidateScore 的分项字段同构，但不止于同构：它额外携带 s_own / s_sim 的
+// 出处（命中的归属档位、相似命中来自哪张历史工单）。那些是过程观测，
+// 不进持久化结构，所以两者仍由 Decision.ToAssignmentLog 单向映射。
 type Candidate struct {
 	EmployeeID     int64
 	Name           string
@@ -239,14 +236,16 @@ func (d Decision) ToAssignmentLog() domain.AssignmentLog {
 	log.Candidates = make([]domain.CandidateScore, 0, len(d.Candidates))
 	for _, c := range d.Candidates {
 		log.Candidates = append(log.Candidates, domain.CandidateScore{
-			EmployeeID:   c.EmployeeID,
-			Name:         c.Name,
-			SkillScore:   c.OwnScore, // 语义近似："是否匹配需求"→ "是否是负责人"
-			LoadScore:    c.AvailScore,
-			RecencyScore: c.RecentScore,
-			Total:        c.Total,
-			Filtered:     c.Filtered,
-			FilterReason: c.FilterReason,
+			EmployeeID:     c.EmployeeID,
+			Name:           c.Name,
+			OwnScore:       c.OwnScore,
+			SimScore:       c.SimScore,
+			AvailScore:     c.AvailScore,
+			SeniorityScore: c.SeniorityScore,
+			RecentScore:    c.RecentScore,
+			Total:          c.Total,
+			Filtered:       c.Filtered,
+			FilterReason:   c.FilterReason,
 		})
 	}
 	return log
@@ -261,8 +260,7 @@ type Pipeline struct {
 	config   PipelineConfig
 
 	// sabotage 开关，仅供评测回归使用，生产保持默认 false。
-	// 与现有 Assigner 的三个开关同一设计动机：直接证明"关键不变量破坏时评测能否检出"。
-	forceStage2        bool
+	// 设计动机：直接证明"关键不变量破坏时评测能否检出"。
 	skipOwnershipBoost bool
 	allowAnyAssigneeID bool // 关闭 LLM 输出的 enum 校验
 }
@@ -282,12 +280,6 @@ func WithFeatureWeights(w FeatureWeights) PipelineOption {
 // WithPipelineConfig 覆盖 Pipeline 配置。
 func WithPipelineConfig(c PipelineConfig) PipelineOption {
 	return func(p *Pipeline) { p.config = c }
-}
-
-// WithForcedStage2 强制所有派单走 Stage 2，用于 Stage 2 单独评测。
-// 仅供评测使用；生产代码不得使用。
-func WithForcedStage2() PipelineOption {
-	return func(p *Pipeline) { p.forceStage2 = true }
 }
 
 // WithoutOwnershipBoost 将 ownership 权重置零。
@@ -347,6 +339,13 @@ func (p *Pipeline) Run(
 		return Decision{}, fmt.Errorf("resolve services: %w", err)
 	}
 	decision.Services = matches
+	if len(matches) > 0 {
+		p.emitDispatch(ctx, DispatchEvent{Stage: "resolve",
+			Detail:   fmt.Sprintf("服务解析：命中服务 %d（score %.2f）", matches[0].ServiceID, matches[0].Score),
+			Services: buildServiceHits(matches, dir)})
+	} else {
+		p.emitDispatch(ctx, DispatchEvent{Stage: "resolve", Detail: "服务解析：无服务命中"})
+	}
 
 	// ---- Stage 1.2 相似历史 ----
 	hits, err := p.findSimilar(ctx, ticket)
@@ -357,8 +356,17 @@ func (p *Pipeline) Run(
 	// ---- Stage 1.3 + 1.4 过滤 + 打分 ----
 	candidates := p.scoreAll(ticket, dir, matches, hits)
 	decision.Candidates = candidates
+	if top := pickTop(candidates); top.EmployeeID > 0 {
+		p.emitDispatch(ctx, DispatchEvent{Stage: "candidates",
+			Detail: fmt.Sprintf("候选排序：%s(%d) 总分 %.3f 居首，共 %d 名候选", top.Name, top.EmployeeID, top.Total, len(candidates)),
+			Top:    buildTopCandidates(candidates, 3)})
+	} else {
+		p.emitDispatch(ctx, DispatchEvent{Stage: "candidates", Detail: "无可用候选人"})
+	}
 
-	// ---- Stage 1.5 判弱 ----
+	// ---- Stage 1.5 判弱（观测标注）----
+	// 2026-09-25 起判弱不再决定升级与否（choosers 存在即全走 Stage 2）；
+	// Weakness 保留为 Decision 的观测字段：评测轴归因、Stage 2 prompt 的参考信号。
 	weakness := p.judgeWeakness(candidates, matches)
 	decision.Weakness = weakness
 
@@ -370,23 +378,27 @@ func (p *Pipeline) Run(
 		return decision, nil
 	}
 
-	// 强判定命中：Stage 1 直出。
-	if weakness == WeaknessNone && !p.forceStage2 {
-		winner := pickTop(candidates)
-		decision.AssigneeID = winner.EmployeeID
-		decision.Score = winner.Total
-		decision.Outcome = domain.OutcomeMatched
-		decision.Path = pathForWinner(winner)
-		decision.Reason = explainStage1(ticket, winner, candidates, matches)
-		return decision, nil
-	}
-
-	// 弱判定 → Stage 2；若关闭则直落 Stage 3。
-	if !p.config.Stage2Enabled {
-		return p.escalateToHuman(decision, candidates, "Stage 2 已关闭，判弱样本直落人工"), nil
-	}
-	if p.chooser == nil {
-		return p.escalateToHuman(decision, candidates, "Stage 2 未注入 chooser，判弱样本直落人工"), nil
+	// ---- LLM-primary 决策（2026-09-25 改造）----
+	// margin / floor 这类拍的阈值不再充当"谁去 Stage 2"的闸门——它们降级为
+	// Decision.Weakness 上的观测标注（供归因与评测轴），不再承重。
+	// 出口判定只看一件事：chooser 是否注入。
+	//   - 注入 chooser 且未关闭 → 一律 Stage 2：Stage 1 只负责服务解析、硬约束
+	//     过滤与 top-K 短名单，每张非阻塞工单都由 LLM 在候选内选人
+	//     （enum 契约 + rationale 落库）。这是"禁用经验权重、决策交 LLM"的派单侧形态。
+	//   - 未注入 chooser（离线评测 / scripted / 无模型部署）→ Stage 1 直出，
+	//     判弱样本直落 Stage 3。离线评测的口径与数字因此保持不变。
+	if p.chooser == nil || !p.config.Stage2Enabled {
+		if weakness == WeaknessNone {
+			winner := pickTop(candidates)
+			decision.AssigneeID = winner.EmployeeID
+			decision.Score = winner.Total
+			decision.Outcome = domain.OutcomeMatched
+			decision.Path = pathForWinner(winner)
+			decision.Reason = explainStage1(ticket, winner, candidates, matches)
+			return decision, nil
+		}
+		return p.escalateToHuman(decision, candidates,
+			"Stage 2 未启用（未注入 chooser 或已关闭），判弱样本直落人工"), nil
 	}
 
 	started := time.Now()
@@ -406,6 +418,8 @@ func (p *Pipeline) Run(
 	decision.Stage2Usage = choice.Usage
 	decision.Stage2Rationale = choice.Rationale
 	decision.Stage2Confid = choice.Confidence
+	p.emitDispatch(ctx, DispatchEvent{Stage: "stage2",
+		Detail: fmt.Sprintf("LLM 决策：选择员工 %d，理由：%s", choice.AssigneeID, truncate(choice.Rationale, 80))})
 
 	// 显式升级人工：不是错误，是模型的合法输出。
 	if choice.AssigneeID == EscalateHumanID {
@@ -489,11 +503,10 @@ func pickTop(candidates []Candidate) Candidate {
 	return active[0]
 }
 
-// sortCandidatesStable 排序规则与 Assigner.sortCandidates 一致：
-// 总分降序 → 负载分降序 → 响应分降序 → 员工 ID 升序。
+// sortCandidatesStable 排序规则：总分降序 → 可用度降序 → 近期表现降序 → 员工 ID 升序。
 //
-// 复制而非共享是为了避免改动 Assigner.go（并发 session 会踩到）；
-// 若两侧规则漂移，pipeline 测试的 sabotage 会检出（Stage 1 排序稳定性断言）。
+// 最后一档用员工 ID 收敛是必需的：并列时若次序不稳定，同一份输入两次跑出不同指派，
+// 评测与审计都没法复现。
 func sortCandidatesStable(cs []Candidate) {
 	sort.SliceStable(cs, func(i, j int) bool {
 		left, right := cs[i], cs[j]
@@ -568,7 +581,18 @@ func truncate(s string, n int) string {
 	return string(r[:n]) + "…"
 }
 
-// nearlyEqual 定义在 assigner.go；同包内共享，pipeline 侧的排序与 margin 判定复用同一实现。
+// nearlyEqual 判断两个分数是否可视为相同，容忍浮点累加误差。
+//
+// 没有这个容忍，排序 tiebreak 与判弱 margin 会被 1e-17 量级的累加误差决定胜负，
+// 评测结果就不可复现。
+func nearlyEqual(a, b float64) bool {
+	const epsilon = 1e-9
+	diff := a - b
+	if diff < 0 {
+		diff = -diff
+	}
+	return diff < epsilon
+}
 
 // explainStage1 Stage 1 直出时的可读理由。
 func explainStage1(ticket domain.Ticket, winner Candidate, all []Candidate, matches []ServiceMatch) string {

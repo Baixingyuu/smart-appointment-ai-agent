@@ -190,7 +190,13 @@ const stage2SystemPrompt = `你是派单助手，负责在若干候选处理人�
 // 只喂 §设计文档 §2.1 里那五样东西，其他一概不给。
 func buildStage2Prompt(req Stage2Request, candidates []Candidate) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "【升级原因】%s\n\n", req.Weakness)
+	// Weakness 现在是观测标注而非升级闸（LLM-primary）：none 表示 Stage 1 强命中，
+	// 仍送给模型作参考信号，但不再是"因为弱才问你"。
+	if req.Weakness == WeaknessNone {
+		fmt.Fprintf(&b, "【Stage 1 参考】强命中（无升级原因），Stage 1 排序供参考\n\n")
+	} else {
+		fmt.Fprintf(&b, "【升级原因】%s\n\n", req.Weakness)
+	}
 
 	b.WriteString("【工单】\n")
 	fmt.Fprintf(&b, "ID=%d 标题=%s\n", req.Ticket.ID, req.Ticket.Title)

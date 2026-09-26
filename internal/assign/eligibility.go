@@ -1,6 +1,6 @@
 // Stage 1.3：硬约束过滤（在职 / 并发 / P0 级别门槛）。
 //
-// 过滤先于打分：与现有 Assigner 同一设计。见 docs/DISPATCH_PIPELINE.md §1.3。
+// 过滤先于打分：见 docs/DISPATCH_PIPELINE.md §1.3。
 // 关键不变量：被过滤者也要进 Candidates 明细，否则"为什么没选他"没法复核。
 package assign
 

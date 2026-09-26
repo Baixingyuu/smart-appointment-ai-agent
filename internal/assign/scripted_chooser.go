@@ -32,6 +32,10 @@ type ScriptedChooser struct {
 	mu       sync.Mutex
 	ByTicket map[int64]ScriptedChoice
 	Default  *ScriptedChoice
+	// Sequential 是按调用顺序消费的 FIFO 决策队列，优先于 ByTicket / Default。
+	// 用途：同一张工单被派单多次（升级换人）时，ticketID 无法区分轮次，
+	// 队列能精确表达"第一次选 A、第二次选 B"。生产 chooser 无状态，不消费此字段。
+	Sequential []ScriptedChoice
 	// calls 记录每次 Choose 的入参摘要，供断言"Stage 2 被调用了几次 / 送进去的候选集对不对"。
 	calls []Stage2Request
 }
@@ -47,12 +51,17 @@ func (s *ScriptedChooser) Choose(_ context.Context, req Stage2Request) (LLMChoic
 	defer s.mu.Unlock()
 	s.calls = append(s.calls, req)
 
-	choice, ok := s.ByTicket[req.Ticket.ID]
-	if !ok {
-		if s.Default == nil {
-			return LLMChoice{}, fmt.Errorf("ScriptedChooser: 未预置 ticketID=%d 且无 Default", req.Ticket.ID)
-		}
+	var choice ScriptedChoice
+	if len(s.Sequential) > 0 {
+		// FIFO 队列优先：消费一条即出队。
+		choice = s.Sequential[0]
+		s.Sequential = s.Sequential[1:]
+	} else if c, ok := s.ByTicket[req.Ticket.ID]; ok {
+		choice = c
+	} else if s.Default != nil {
 		choice = *s.Default
+	} else {
+		return LLMChoice{}, fmt.Errorf("ScriptedChooser: 未预置 ticketID=%d 且无 Default", req.Ticket.ID)
 	}
 	if choice.Err != nil {
 		return LLMChoice{}, choice.Err

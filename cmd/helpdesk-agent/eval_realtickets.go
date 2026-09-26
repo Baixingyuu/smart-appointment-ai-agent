@@ -12,14 +12,12 @@ import (
 	"time"
 
 	"github.com/mac/helpdesk-agent/internal/agent"
-	"github.com/mac/helpdesk-agent/internal/assign"
 	"github.com/mac/helpdesk-agent/internal/classify"
 	"github.com/mac/helpdesk-agent/internal/evalrun"
 	"github.com/mac/helpdesk-agent/internal/llm"
 	"github.com/mac/helpdesk-agent/internal/rag"
 	"github.com/mac/helpdesk-agent/internal/seed"
 	"github.com/mac/helpdesk-agent/internal/store"
-	"github.com/mac/helpdesk-agent/internal/ticket"
 )
 
 // 真实工单观测：把真实 IT 工单文本喂给 Agent，记录它做了什么。
@@ -237,7 +235,7 @@ func observeOneTicket(item RealTicketCase, model llm.ChatModel) RealTicketObserv
 		observation.Error = "加载种子数据失败: " + err.Error()
 		return observation
 	}
-	tickets := ticket.New(st, assign.New(assign.DefaultWeights()))
+	tickets := newDispatchService(st, nil)
 	retriever := seed.NewBM25Retriever(rag.DefaultOptions())
 
 	// 与 serve 同构：注入意图分类器，观测的是「部署形态的系统」，

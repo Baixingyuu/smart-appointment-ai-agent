@@ -133,6 +133,40 @@ func (a *Agent) findOpenTicketTool() tooling.Definition {
 }
 
 func (a *Agent) createConfirmTool() tooling.Definition {
+	properties := map[string]any{
+		"title":       map[string]any{"type": "string", "description": "工单标题，简明概括问题，不超过 40 字"},
+		"description": map[string]any{"type": "string", "description": "问题现象、影响范围、已尝试的操作"},
+		"category": map[string]any{
+			"type":        "string",
+			"enum":        []string{"incident", "consultation", "request", "change"},
+			"description": "工单类型",
+		},
+		"priority": map[string]any{
+			"type":        "string",
+			"enum":        []string{"P0", "P1", "P2", "P3"},
+			"description": "优先级",
+		},
+		"missingInfo": map[string]any{
+			"type":        "array",
+			"items":       map[string]any{"type": "string"},
+			"description": "尚缺的关键信息",
+		},
+	}
+	// 仅在建单交互启用时才声明 extractedSlots：它是可追溯性判定的唯一证据入口。
+	// 默认（未启用）部署不为一个用不到的字段付固定 prompt 开销。
+	if a.traceability != nil {
+		properties["extractedSlots"] = map[string]any{
+			"type": "array",
+			"items": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"name":  map[string]any{"type": "string", "description": "已填上的阻塞槽位名"},
+					"quote": map[string]any{"type": "string", "description": "逐字摘录的用户原话，作为该槽位已填的证据"},
+				},
+			},
+			"description": "对阻塞性关键信息，逐项给出用户原话摘录（quote）。只有从用户话里确实读到的才填，不要臆造",
+		}
+	}
 	return tooling.Definition{
 		Code: ToolCreateConfirm,
 		Description: "向用户发起工单创建确认。调用后不会立即创建工单，而是先向用户展示工单内容并等待确认。" +
@@ -143,31 +177,8 @@ func (a *Agent) createConfirmTool() tooling.Definition {
 		RequireConfirmation: true,
 		Required:            []string{"title"},
 		Parameters: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"title":       map[string]any{"type": "string", "description": "工单标题，简明概括问题，不超过 40 字"},
-				"description": map[string]any{"type": "string", "description": "问题现象、影响范围、已尝试的操作"},
-				"category": map[string]any{
-					"type":        "string",
-					"enum":        []string{"incident", "consultation", "request", "change"},
-					"description": "工单类型",
-				},
-				"priority": map[string]any{
-					"type":        "string",
-					"enum":        []string{"P0", "P1", "P2", "P3"},
-					"description": "优先级",
-				},
-				"skillIds": map[string]any{
-					"type":        "array",
-					"items":       map[string]any{"type": "integer"},
-					"description": "该问题涉及的技能编号，用于匹配有相关经验的处理人。留空则由系统按类型推导",
-				},
-				"missingInfo": map[string]any{
-					"type":        "array",
-					"items":       map[string]any{"type": "string"},
-					"description": "尚缺的关键信息",
-				},
-			},
+			"type":                 "object",
+			"properties":           properties,
 			"required":             []string{"title"},
 			"additionalProperties": false,
 		},

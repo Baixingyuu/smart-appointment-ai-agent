@@ -8,7 +8,14 @@
 
 > 本文档定义如何以 `agent-desk` 为骨架、借鉴 `smart-appointment-ai-agent` 的能力，构建一个以**评测驱动**的客服 Agent 系统。
 > 目标读者：项目作者本人（用于实施 + 面试准备）。
-> 状态：设计草案，未开始实施。
+> 状态：**动工前的设计草案**（本文写作时尚未实施；如今主体已落地，因此全文都是历史快照）。
+> 具体未实现项：ADR-1 的 `Trace`/`Step` 类型块只是 sketches——`Step.Type` 的取值 `skill`
+> 随技能层于 2026-09-24 整体删除且从未上线；该块的 `ErrorKind` 取值名（`policy_denied` /
+> `arg_too_large` / `need_confirm` / `exec_error`）与实际实现的 `tooling.ErrorKind`
+> （`unknown_tool` / `not_allowed` / `budget_exceeded` / `args_too_large` / `invalid_args` /
+> `needs_confirm` / `exec_failed`）不一致；`Surface` / `InterruptType` / `DecisionAction`
+> 三个字段从未实现。现状以 `HANDOVER.md` §2（代码地图）与 §11（09-24 增补）、
+> `EVALUATION.md` §4~§5 为准。
 
 ---
 

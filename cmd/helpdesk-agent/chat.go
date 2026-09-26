@@ -95,17 +95,39 @@ func runChat(args []string) error {
 	if embedder != nil {
 		retriever = rag.New(seed.KnowledgeChunks(), embedder, rag.DefaultOptions())
 	}
+	// 与 serve 同一条装配路径：WithIntake（两级可追溯判定 + 追问门控）与
+	// LLM 确认判定（词表降为回退）都必须在，否则人工发现的缺陷落不到生产口径上。
+	// WithEventObserver 把「第几轮 / 调了哪个工具 / 结果如何」实时打到终端，
+	// 减少对 agent 内部流程的未知性（模型调用是回合内最耗时的黑洞，round 事件先亮起）。
 	ag, err := agent.New(chatModel, st, retriever, tickets, agent.DefaultConfig(),
-		agent.WithClassifier(evalrun.NewClassifierRunner(classify.New(chatModel))))
+		agent.WithClassifier(evalrun.NewClassifierRunner(classify.New(chatModel))),
+		agent.WithIntake(agent.IntakeConfig{
+			Checker: agent.NewTwoLevelTraceabilityChecker(chatModel, agent.DefaultTraceabilityConfig()),
+			Gating:  true,
+		}),
+		agent.WithConfirmationJudge(&agent.LLMConfirmationJudge{Model: chatModel}),
+		agent.WithEventObserver(printTurnEvent),
+	)
 	if err != nil {
 		return err
 	}
 
 	var lastTurn *agent.TurnResult
-	executor := conversation.TurnExecutorFunc(func(conversationID int64, message string) (conversation.TurnOutcome, error) {
-		result, err := ag.Run(context.Background(), agent.TurnInput{
+	// streamed 缓存本轮已流式输出的回复文本。printReply 用它判断是否已被逐字打过，
+	// 避免「流式打一遍、结束再打一遍」的双份回复。每回合开始前由主循环清空。
+	var streamed strings.Builder
+	executor := conversation.TurnExecutorFunc(func(ctx context.Context, conversationID int64, message string) (conversation.TurnOutcome, error) {
+		result, err := ag.Run(ctx, agent.TurnInput{
 			ConversationID: conversationID,
 			UserMessage:    message,
+			Stream: func(delta string) {
+				// 首段先亮「助手 >」前缀，再逐字外发正文。
+				if streamed.Len() == 0 {
+					fmt.Print("助手 > ")
+				}
+				fmt.Print(delta)
+				streamed.WriteString(delta)
+			},
 		})
 		if err != nil {
 			return conversation.TurnOutcome{}, err
@@ -169,7 +191,8 @@ func runChat(args []string) error {
 
 		turn++
 		startedAt := time.Now()
-		result, err := conversations.Send(conversationID, line, fmt.Sprintf("chat-%d-%d", conversationID, turn))
+		streamed.Reset()
+		result, err := conversations.Send(context.Background(), conversationID, line, fmt.Sprintf("chat-%d-%d", conversationID, turn))
 		sample := turnSample{
 			At:             startedAt.Format(time.RFC3339),
 			ConversationID: conversationID,
@@ -187,11 +210,56 @@ func runChat(args []string) error {
 			}
 			sample.Interrupted = result.Turn.Interrupted
 			sample.TicketID = result.Turn.TicketID
-			printReply(&sample)
+			printReply(&sample, streamed.String())
 		}
 		if err := encoder.Encode(sample); err != nil {
 			fmt.Printf("  ! 样本写入失败: %v\n", err)
 		}
+	}
+}
+
+// printTurnEvent 是回合事件的实时外显：直接写终端，不落样本。
+//
+// 与样本 JSONL 分工：这里给人看过程，样本留作事后归因；两者不重复记账。
+// 状态文案沿用 tooling 的 Status 语义（completed / awaiting_user_info /
+// awaiting_confirmation / failed...），把"为什么没建单"讲成人话。
+func printTurnEvent(e agent.TurnEvent) {
+	switch e.Kind {
+	case "round":
+		fmt.Printf("  ⟳ 第 %d 轮：%s…\n", e.Round, e.Detail)
+	case "tool":
+		if e.Detail != "" {
+			fmt.Printf("     · %s → %s：%s\n", e.Tool, toolStatusText(e.Status), truncateRunes(e.Detail, 80))
+		} else {
+			fmt.Printf("     · %s → %s\n", e.Tool, toolStatusText(e.Status))
+		}
+	case "confirm":
+		fmt.Printf("     · 确认判定：%s\n", e.Detail)
+	}
+}
+
+// truncateRunes 按 rune 截断文本，超出补省略号；用于工具事件原因等短展示场景。
+func truncateRunes(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n]) + "…"
+}
+
+// toolStatusText 把工具状态码翻译成可读短语，未知状态原样返回避免吞信息。
+func toolStatusText(status string) string {
+	switch status {
+	case "completed":
+		return "完成"
+	case "awaiting_user_info":
+		return "信息不足，先追问"
+	case "awaiting_confirmation":
+		return "发起确认，等待回复"
+	case "failed":
+		return "执行失败"
+	default:
+		return status
 	}
 }
 
@@ -212,20 +280,37 @@ func fillFromTurn(sample *turnSample, result *agent.TurnResult) {
 	for _, call := range result.ToolCalls {
 		sample.Tools = append(sample.Tools, call.Code)
 		if call.Status != "completed" {
-			sample.Rejections = append(sample.Rejections, fmt.Sprintf("%s:%s", call.Code, call.ErrorKind))
+			// 以 Status 为准而非 ErrorKind：awaiting_user_info（intake 追问）
+			// 这类"未执行但非错误"的状态没有 ErrorKind，旧写法会打出空尾巴。
+			detail := call.Status
+			if call.ErrorKind != "" {
+				detail += "/" + string(call.ErrorKind)
+			}
+			sample.Rejections = append(sample.Rejections, fmt.Sprintf("%s:%s", call.Code, detail))
 		}
 	}
 }
 
-func printReply(sample *turnSample) {
-	prefix := "助手 > "
-	switch {
-	case sample.AwaitingConfirmation && sample.Interrupted:
-		prefix = "助手 > [本轮发起确认，等待回复] "
-	case sample.AwaitingConfirmation:
-		prefix = "助手 > [仍在等待你的确认] "
+func printReply(sample *turnSample, streamedText string) {
+	// 已流式打过的回复不再重打，只补一个换行收尾；否则按原逻辑整段打印。
+	// 判据用"流式文本 == 最终回复"而非一个布尔：模型在调用工具前可能先吐一句前言，
+	// 那部分虽已流式外发，但正式回复（如确认话术/中断提示）仍需整段打印。
+	fullyStreamed := sample.Reply != "" && strings.TrimSpace(streamedText) == strings.TrimSpace(sample.Reply)
+	if fullyStreamed {
+		fmt.Println()
+	} else {
+		if strings.TrimSpace(streamedText) != "" {
+			fmt.Println() // 有前言流式输出时，先换行再打印正式回复，避免挤在同一行
+		}
+		prefix := "助手 > "
+		switch {
+		case sample.AwaitingConfirmation && sample.Interrupted:
+			prefix = "助手 > [本轮发起确认，等待回复] "
+		case sample.AwaitingConfirmation:
+			prefix = "助手 > [仍在等待你的确认] "
+		}
+		fmt.Printf("%s%s\n", prefix, sample.Reply)
 	}
-	fmt.Printf("%s%s\n", prefix, sample.Reply)
 	if sample.TicketID > 0 {
 		fmt.Printf("       工单 #%d 已创建\n", sample.TicketID)
 	}

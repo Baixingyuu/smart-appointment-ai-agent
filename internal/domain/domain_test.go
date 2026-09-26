@@ -79,6 +79,44 @@ func TestParseConfirmationDecisionAvoidsSubstringTraps(t *testing.T) {
 	}
 }
 
+// TestParseConfirmationDecisionForceCommit 锁住"永远可达的建单出口"及其优先级。
+//
+// 阶梯顺序：newDemand → cancel → forceCommit → confirm。forceCommit 会建单（有副作用），
+// 因此取消必须排在它前面；纯祈使句（"别问了"）才判 forceCommit。
+func TestParseConfirmationDecisionForceCommit(t *testing.T) {
+	cases := []struct {
+		text string
+		want ConfirmationDecision
+	}{
+		// 明确的主动建单祈使句。
+		{"别问了", DecisionForceCommit},
+		{"直接建单", DecisionForceCommit},
+		{"提交吧", DecisionForceCommit},
+		{"先建单吧，细节我后面补", DecisionForceCommit},
+		// 「不用再问了」以取消词「不用」开头，取消优先 → 判 cancel，
+		// 这也正是 forceCommit 词表刻意不含「不用再问」的原因。
+		{"不用再问了", DecisionCancel},
+
+		// 取消优先：犹豫表述里同时有取消词时，取无副作用解释。
+		{"别问了，算了吧", DecisionCancel},
+		{"直接建单？算了不建了", DecisionCancel},
+
+		// 新建单诉求优先：既像 forceCommit 又像新登记时，交回模型带上下文判断。
+		{"帮我建个单，别问了", DecisionHasNewDemand},
+
+		// 「就这样」刻意不收进 forceCommit：它偏"弱确认"，与既有确认用例
+		// （"嗯，确认，就这样"）同义；单独出现时不授权建单，落 unknown 交澄清。
+		{"就这样", DecisionUnknown},
+	}
+	for _, tc := range cases {
+		t.Run(tc.text, func(t *testing.T) {
+			if got := ParseConfirmationDecision(tc.text); got != tc.want {
+				t.Fatalf("输入 %q 期望 %s，实际 %s", tc.text, tc.want, got)
+			}
+		})
+	}
+}
+
 // TestParseConfirmationDecisionRejectsNonApproval 锁住一类具体缺陷：
 // 「确认」二字出现在中文里并不总表示批准——它常作为自述核实
 // （"我确认一下再说"）或否定式（"无法确认"）的一部分出现。
@@ -121,17 +159,26 @@ func TestParseConfirmationDecisionRejectsNonApproval(t *testing.T) {
 	}
 }
 
-// TestOnlyConfirmGrantsApproval 是一条口径不变式而非逐例断言：
-// 写操作（建单）的唯一许可证是 DecisionConfirm，因此除它以外的任何判定
-// 都不得在语义上等同于"用户批准了这份草案"。
-// 新增枚举值时必须落在这条不变式之内。
-func TestOnlyConfirmGrantsApproval(t *testing.T) {
+// TestGrantsApprovalInvariant 是一条口径不变式而非逐例断言：
+// 写操作（建单）的许可证只有 DecisionConfirm 与 DecisionForceCommit，
+// 因此除这两者以外的任何判定都不得等同于"用户批准了这份草案"。
+// 新增枚举值时必须落在这条不变式之内（见 ConfirmationDecision.GrantsApproval）。
+func TestGrantsApprovalInvariant(t *testing.T) {
 	probes := []string{
 		"", "   ", "我想想", "我确认一下影响范围再说", "无法确认",
 		"帮我建个单跟进吧", "取消", "不用了", "好的", "确认",
+		"别问了", "直接建单",
 	}
 	for _, text := range probes {
-		if got := ParseConfirmationDecision(text); (got == DecisionConfirm) != (text == "好的" || text == "确认") {
+		got := ParseConfirmationDecision(text)
+		// 批准 = 判定落在 {confirm, forceCommit}；与 GrantsApproval() 必须一致。
+		wantApproval := got == DecisionConfirm || got == DecisionForceCommit
+		if got.GrantsApproval() != wantApproval {
+			t.Errorf("%q 判定 %s：GrantsApproval()=%v 与实际不符", text, got, got.GrantsApproval())
+		}
+		// 且只有"好的/确认/别问了/直接建单"这几条明确表态才授权。
+		approved := text == "好的" || text == "确认" || text == "别问了" || text == "直接建单"
+		if wantApproval != approved {
 			t.Errorf("%q 判定为 %s，批准与否不符预期", text, got)
 		}
 	}
@@ -275,69 +322,6 @@ func TestTicketAddMissingInfoDeduplicates(t *testing.T) {
 	}
 	if !ticket.HasMissingInfo("影响范围") {
 		t.Error("HasMissingInfo 应能命中已记录的字段")
-	}
-}
-
-func TestSkillSetJaccard(t *testing.T) {
-	a := NewSkillSet(1, 2, 3)
-	b := NewSkillSet(1, 2)
-
-	// |A∩B| / |A∪B| = 2/3
-	if got := a.Jaccard(b); got < 0.666 || got > 0.667 {
-		t.Errorf("Jaccard 期望 0.667，实际 %f", got)
-	}
-	// 空集合返回 0 而非 1：空需求不应被视为「完美匹配任何人」，
-	// 否则无技能工单会随机命中，掩盖匹配失效。
-	if got := NewSkillSet().Jaccard(a); got != 0 {
-		t.Errorf("空集合 Jaccard 应为 0，实际 %f", got)
-	}
-	if got := a.Jaccard(NewSkillSet()); got != 0 {
-		t.Errorf("与空集合 Jaccard 应为 0，实际 %f", got)
-	}
-	// 无交集为 0。
-	if got := NewSkillSet(1).Jaccard(NewSkillSet(9)); got != 0 {
-		t.Errorf("无交集 Jaccard 应为 0，实际 %f", got)
-	}
-
-	// CoveredBy 只以自身为分母，不惩罚技能多的一方。
-	if got := b.CoveredBy(a); got != 1 {
-		t.Errorf("b 应被 a 完全覆盖，实际 %f", got)
-	}
-	if got := a.CoveredBy(b); got < 0.666 || got > 0.667 {
-		t.Errorf("a 被 b 覆盖 2/3，实际 %f", got)
-	}
-}
-
-func TestSkillSetIDsAreSorted(t *testing.T) {
-	// 稳定输出便于日志比对与测试断言。
-	ids := NewSkillSet(3, 1, 2).IDs()
-	for i, want := range []int64{1, 2, 3} {
-		if ids[i] != want {
-			t.Fatalf("ID 应升序，位置 %d 期望 %d 实际 %d", i, want, ids[i])
-		}
-	}
-	// 非正数应被丢弃。
-	if ids := NewSkillSet(0, -1, 5).IDs(); len(ids) != 1 || ids[0] != 5 {
-		t.Fatalf("非正数应被丢弃，实际 %v", ids)
-	}
-	if NewSkillSet().IDs() != nil {
-		t.Error("空集合应返回 nil")
-	}
-}
-
-func TestParseSkillIDs(t *testing.T) {
-	got := ParseSkillIDs("1, 2 ,x, 0, 3")
-	want := []int64{1, 2, 3}
-	if len(got) != len(want) {
-		t.Fatalf("期望 %v，实际 %v", want, got)
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Fatalf("期望 %v，实际 %v", want, got)
-		}
-	}
-	if ParseSkillIDs("   ") != nil {
-		t.Error("空白输入应返回 nil")
 	}
 }
 

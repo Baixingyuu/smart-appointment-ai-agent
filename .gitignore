@@ -11,6 +11,11 @@ eval/reports/*.json
 # 可凭 eval/datasets/gen_v2.py 里记录的 URL 重新下载，许可归原作者，不入仓。
 eval/raw/
 
+# Chainlit 前端：虚拟环境与字节码缓存是本地产物，体积大且含二进制，不入仓。
+# 依赖清单见 ui/requirements.txt，重建只需 pip install -r ui/requirements.txt。
+ui/.venv/
+ui/__pycache__/
+
 # 编辑器与系统
 .DS_Store
 .idea/

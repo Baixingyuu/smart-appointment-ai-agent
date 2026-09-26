@@ -15,10 +15,10 @@
 | **Stage 3** | 人工待认领池，无候选/LLM 拒绝/候选集外 ID 三种入口都汇到这里 | ~5% | 一次人审 | 派单 or 拒绝 |
 
 Stage 1 内部**不是级联优先级**——归属、相似、可用度是**同一打分器的独立特征**，
-这样才能力调（改权重看整体效果）而不是每段各调各的。硬约束过滤（不在职、满载、权限域外）
-先于打分，与现有 `Assigner.score` 保持一致。
+这样才能力调（改权重看整体效果）而不是每段各调各的。硬约束过滤（不在职、满载、P0 非 senior）
+先于打分：不该参与的人不进 `Candidates` 打分，只进明细并带过滤原因。
 
-Stage 2 只在 Stage 1 判"弱"时启用。**判弱不是打分的连续值，是三类离散原因**（见 §2.5），
+Stage 2 只在 Stage 1 判"弱"时启用。**判弱不是打分的连续值，是三类离散原因**（见 §1.5），
 这样"为什么升级"这件事本身可评测、可归因，而不是"模型觉得不太像"。
 
 ---
@@ -40,7 +40,7 @@ Ticket ──► 1.1 resolve ──► 1.2 candidates ──► 1.3 eligibility 
 语料 = 服务字典（`seed/service_catalog.go`），每条文档 = 服务名 + 别名 + 描述 + 关键组件关键词。
 门控沿用 `Retriever` 的 6 桶 `Reason`；Stage 1 只关心两件事：
 - `TopKServices`（默认 3）
-- 最高分是否 ≥ `ServiceMatchFloor`（默认 0.40）
+- 最高分是否 ≥ `ServiceMatchFloor`（默认 0.25，实测依据见 `pipeline.go` 的 `DefaultPipelineConfig`）
 
 **为什么不 LLM**：这一段本质是"字符串集合匹配封闭枚举"，BM25 已经够；且服务字典是人工维护的枚举，
 一旦上 LLM 抽取，"抽出一个不存在的服务 ID"就成了新型缺陷。这段留给 Stage 2 做（有 enum 约束）。
@@ -80,10 +80,12 @@ type SimilarHit struct {
 
 ### 1.3 eligibility：硬约束过滤
 
-**目的**：把根本不该参与的候选（不在职 / 满载 / 权限域外）先踢掉，不进入打分。
+**目的**：把根本不该参与的候选（不在职 / 满载 / P0 未达 senior 门槛）先踢掉，不进入打分。
 
-**沿用现有规则**：`Assigner.score` 的 `!emp.Active → filtered` / `!emp.HasCapacity() → filtered`
-是正确形态，Stage 1 直接把它前置。新增：
+**基本判据**（`eligibility.go`）：`!emp.Active → filtered`（不在职）、`!emp.HasCapacity() → filtered`
+（未完成工单数已达 `MaxConcurrent`）。负载刻意不采信 `Employee.CurrentLoad` 那个静态快照：
+候选由 `ticket.Service` 在每次派单时用 `FindOpenTicketsByAssignee` 重算，否则满载的人会被一直派中。
+新增：
 - **Level 门槛**：`Priority == P0` 时要求 `Level >= Senior`。这条规则是**分诊语义**：
   P0 出问题时宁可让 senior 半夜上来，不能让新人接了再升。规则写在 `eligibility.go`，不放 LLM。
 - **OnCall 与值班窗口**：一期只加字段不加规则。真实值班表要接 HR / IM 才可信；
@@ -106,21 +108,23 @@ func Filter(ticket domain.Ticket, employees []domain.EmployeeExtension) ([]Eligi
 | --- | --- | --- | --- | --- |
 | Ownership | `s_own` | 0.40 | owner=1.0 / backup=0.3 / team=0.1 / 其他=0 | resolve 输出 |
 | Similar-history | `s_sim` | 0.20 | kNN 命中的最高分 | candidates 输出 |
-| Availability | `s_avail` | 0.20 | `1 - loadRatio` | Employee 现有字段 |
+| Availability | `s_avail` | 0.20 | `1 - loadRatio` | 实时未完成工单数 |
 | Seniority | `s_senior` | 0.10 | P0/P1 时 junior=0，其他情况=0.5；senior=1.0 | Level 新字段 |
 | Recency | `s_recent` | 0.10 | Employee.Recency | 现有字段 |
-| Skill（弱信号） | `s_skill` | 0.00 | Jaccard（保留接口） | 现有 SkillSet |
 
-`s_skill` 权重归零但保留接口，是**诚实边界**：现有 120+30 派单数据集是围绕技能打的，
-零权重之后它们就没意义了。因此现有 `Assigner` 不删——**降级为"排序段单元回归"**，
-只测 Jaccard + 排序 + tiebreak 是否稳定，不再声明"端到端派单准确率"。
+**技能特征已整体删除**（2026-09-24）。原计划是"`s_skill` 权重归零但保留 Jaccard 接口"，
+配 `Employee.Skills` / `Ticket.RequiredSkill` 与 120+30 条技能数据集一起留着。实际后果是
+一条**看起来在工作、权重却是 0.00** 的特征，加上一个只被旧数据集引用、没有任何端到端指标
+依赖它的实体层——保留它的唯一效果是让人误以为"技能匹配还在被评测"。
+因此实体、打分特征、数据集、派单器一并删除，派单的第一因只有一个：**谁负责这个业务**。
 
-**接口不新造**：继续用 `domain.CandidateScore` 结构，新增分项字段 `OwnScore / SimScore /
-SeniorityScore`。旧的 `SkillScore / LoadScore / RecencyScore / Total` 全保留，
-`Total = Σ weight_i × score_i`；`Skills` 零权重时等价于 `Total = 0.4 own + 0.2 sim + 0.2 avail + 0.1 senior + 0.1 recent`。
+**明细结构**：`domain.CandidateScore` 每项带 `OwnScore / SimScore / AvailScore /
+SeniorityScore / RecentScore / Total` 与 `Filtered / FilterReason`，
+`Total = Σ weight_i × score_i`，即 `0.4·own + 0.2·sim + 0.2·avail + 0.1·senior + 0.1·recent`。
 
-**确定性 tiebreak**：沿用 `Assigner.sortCandidates` 的规则——总分 → 负载 → 响应 → ID 升序。
-这是现有派单器最重要的性质之一，不能因为换打分器丢掉。
+**确定性 tiebreak**：总分 → 负载 → 响应 → ID 升序，总分比较用 epsilon 容差
+（`1/3` 之类权重在二进制下无法精确表示，`==` 会把"实际相同"误判成"更优"）。
+换打分器不能丢掉这个性质，否则同一批数据两次跑出不同指派，评测就无从复现。
 
 **重标定记录（2026-09-24，由 v2 评测驱动）**：`ownershipScore` 从 `1.0/0.6/0.3` 改为
 `1.0/0.3/0.1`。原因：旧 backup 档位（0.6）让"mid 的 owner vs senior 的 backup"分差只有
@@ -151,9 +155,11 @@ else if margin 未达         → WeaknessLowMargin       → Stage 2
 else                        → 直接派单，记 PathStage1Xxx
 ```
 
-**margin 阈值 0.15 怎么来的**：**目前是拍的**。等有第一批人标数据（`assignment_annotation_blank.json` 150 条），
-画"margin vs 派错率"曲线校准一次；没数据前把它当配置项暴露，评测里对每个阈值单独跑一遍。
-这条不假装是"科学设定"，写清楚。
+**margin 阈值 0.15 怎么来的**：**目前是拍的**。校准需要"人类认可这个派单"的标注数据，
+而人标环节尚未落地（生成空白标注表与一致率比对脚本曾存在，随技能层一起删除——它们的列
+全部围绕技能编号）。当前只有 45 条规则自标注的 v2 样本，用它画"margin vs 派错率"曲线
+等于把规则金标当人类判断，校准不出来只会被自己印证。在拿到人标数据前，把它当配置项暴露，
+评测里对每个阈值单独跑一遍。这条不假装是"科学设定"，写清楚。
 
 ---
 
@@ -233,7 +239,7 @@ Stage 2 输出候选集外 ID 触发 `PathStage2Invalid`。
 | **Stage 2 命中率** | `Outcome=matched && Path starts stage2 / total` | 10-20% |
 | **Stage 3 兜底率** | `Outcome=fallback_pool / total` | ≤ 10% |
 | **Stage 2 幻觉率** | `PathStage2Invalid / Stage2 调用总数` | ≤ 2% |
-| **端到端 Top-1 准确率** | 人标数据集上 `assigneeId == expectedAssigneeId` | 待 v2 数据集就位 |
+| **端到端 Top-1 准确率** | 排序轴 `winner == expectedAssigneeId`；**有效分母 40 而非 45**：gold outcome 为兜底池的样本没有期望处理人 | 见 §4.1 实测 |
 | **成本 / 单** | Stage 2 调用数 × 平均 token × 单价 / total | 目标 < 0.02 元 |
 
 **300 单日单量成本预估**（qwen3:8b 走本地 ollama 时近零；若接外部服务，按 0.006 元/1k token × 平均 3k token/次）：
@@ -244,68 +250,86 @@ Stage 2 输出候选集外 ID 触发 `PathStage2Invalid`。
 **这个成本模型必须写在这里**：Stage 2 值不值这个钱，取决于人工时薪与业务复杂度。
 一期用 qwen3:8b（本地免费）能验证正确性；换成外部服务的成本要重新算。
 
+### 4.1 实测（2026-09-24，`make eval` 离线 45 条）
+
+| 轴 | 结果 | 有效分母 |
+| --- | --- | --- |
+| 抽取轴 service top-1 | 42/45 = 93.33% | 45（每条都有期望服务或明确的"无匹配"） |
+| 判弱轴 原因一致 | 38/45 = 84.44% | 45 |
+| 排序轴 winner 一致 | 34/40 = 85.00% | **40**，不是 45 |
+| 漏斗 | stage1=35 / stage2=0 / stage3=10 | 45 |
+
+三条口径限制，不能被一个总通过率抹平：
+
+1. **Stage 2 未参与**：离线评测刻意不注入 chooser（派单里多一次 LLM 调用会污染轮次、延迟、
+   token 三个轴）。所以 `stage2=0` 是装配选择，不是模型能力上限；`stage3=10`（22.2%）
+   等于"判弱样本全部直落人工"，与 §4 表里 ≤10% 的目标**不同框**，不能据此判不达标。
+   接线已经留好：`eval-assign-v2 -offline-stage2=false` 配上模型即可跑通 Stage 2。
+   **Stage 2 命中率与幻觉率目前是"未测"，不是 0%**——这两个空档只能由真实模型跑出来。
+2. **金标是规则自标注**：45 条 gold 由同一套服务字典与 ownership 规则生成，
+   所以这组数字只证明"实现 == 我们宣称的规则"，不证明外部派单准确率。
+3. **剩余 8 条不一致的主因是金标过期**：§1.4 记录的 `ownershipScore` 重标定只改了实现，
+   gold 是标定前打的——4 条 `exp=none got=low_margin` 正是这个落差的直接后果，
+   它们连带被判 0 分排序（`got=0` 因为离线无 Stage 2 接手）。
+   另有 3 条抽取不一致（dp-v2-036 期望无匹配却召回 2010、dp-v2-041 期望 2005 得 2014、
+   dp-v2-038 期望 2007 得 2003）属 BM25 过度召回与真实歧义两类。
+   **刻意没有重打 gold 来把分数抬上去**：那等于用实现去定义正确答案，
+   回归测试会立刻变成自证。当前基线由 `internal/eval/pipeline_v2_test.go`
+   以下限形式锁定（42/45、38/45、34/40、stage1≥35、stage2==0），退化会红，
+   改进需要显式改基线。
+
 ---
 
-## 5. 代码集成点
-
-**只加不改**（另有一个 session 在同仓库改动；保持 diff 小）：
+## 5. 代码集成点（终态）
 
 ```
-新增文件：
-  internal/domain/service.go             // Service / Team / EmployeeExtension / Level
-  internal/assign/pipeline.go            // 三段编排 + Decision/Path/WeaknessReason 契约
-  internal/assign/resolve.go             // Stage 1.1
-  internal/assign/candidates.go          // Stage 1.2（当前返回空，接口先立）
-  internal/assign/eligibility.go         // Stage 1.3
-  internal/assign/score.go               // Stage 1.4
-  internal/assign/weakness.go            // Stage 1.5
-  internal/assign/llm_chooser.go         // Stage 2 LLM 版本
-  internal/assign/scripted_chooser.go    // Stage 2 假实现（评测/单测用）
-  internal/seed/service_catalog.go       // 15-20 服务节点 + 员工 ownership 映射
-
-不改动：
-  internal/assign/assigner.go            // 现有 Assigner 保留，降级为"排序段回归"目标
-  internal/domain/domain.go              // 现有 Employee / Ticket 字段不变
-  internal/rag/*                         // 通过 rag.Retriever 接口调用，不改内部
-  internal/llm/*                         // 通过 ChatModel 接口调用，不改内部
-
-Pipeline 与现有 Assigner 的关系：
-  pipeline 自己算打分与排序，不调用 Assigner.Assign。原因：
-    · 新特征（own/sim/senior/…）与 Jaccard-based SkillScore 不匹配，硬塞会引入"虚拟技能"这类权宜 hack；
-    · Assigner 的 120+30 派单数据集是围绕 SkillScore 打的，保持它是"排序段回归"目标最省事。
-  但从 Assigner 借三件确定性资产：sortCandidates 的 tiebreak 顺序、nearlyEqual 的误差容忍、
-  Filtered+FilterReason 的候选人明细形态。这三件在 pipeline 中重实现一份（约 20 行），
-  不合并到公共文件——避免与并发 session 的改动冲突。
+internal/domain/service.go             // Service / Team / EmployeeExtension / Level
+internal/assign/pipeline.go            // 三段编排 + Decision/Path/WeaknessReason 契约
+internal/assign/resolve.go             // Stage 1.1
+internal/assign/candidates.go          // Stage 1.2（当前返回空，接口先立）
+internal/assign/eligibility.go         // Stage 1.3
+internal/assign/score.go               // Stage 1.4
+internal/assign/weakness.go            // Stage 1.5
+internal/assign/llm_chooser.go         // Stage 2 LLM 版本
+internal/assign/scripted_chooser.go    // Stage 2 假实现（评测/单测用）
+internal/seed/service_catalog.go       // 14 服务节点 + 员工 ownership 映射
+internal/ticket/dispatch.go            // DirectoryProvider 抽象 + runAssignment（落 AssignmentLog）
 ```
 
-**为什么 pipeline 复用 Assigner 的 tiebreak 而不是 SkillSet 编码**：现有 Assigner 的确定性排序、
-`nearlyEqual` 误差处理、"被过滤者也要出现在 Candidates 明细"这三条是**已经验证过的资产**，
-必须保留。但 ownership 特征不是"技能集合命中与否"的问题（owner/backup/team 是三档不同权重），
-把它硬编码成虚拟技能会引入 Jaccard 分母膨胀的问题。因此打分独立实现、tiebreak 复制一份。
+**通过 `rag.Retriever` 与 `llm.ChatModel` 接口调用，不改这两个包内部**——流水线对它们的
+要求只有"能检索""能带 tools 对话"。
 
-### 5.1 如何在生产入口启用
+**从旧派单器继承的三件确定性资产**（`assigner.go` 已删除，这三件在 pipeline 内重实现）：
+tiebreak 顺序（总分→负载→响应→ID 升序）、`nearlyEqual` 的 epsilon 容差、
+"被过滤者也要出现在 `Candidates` 明细里并带 `FilterReason`"。
+这三条是"同一批数据能复现同一指派"和"为什么没选他可复核"的地基，换打分器不能丢。
 
-Pipeline 通过 `ticket.Dispatcher` 接口接入 `ticket.Service`，不改任何现有调用点：
+### 5.1 装配点与 Stage 2 开关
 
-```
-internal/ticket/dispatch.go     // Dispatcher 抽象 + legacyAssigner / pipelineDispatcher 两个实现
-  · ticket.New(st, *Assigner)   旧签名不变，内部包一层 legacyAssigner
-  · ticket.NewWith(st, Dispatcher, WithDirectoryProvider(p))  新路径
-  · pipelineDispatcher 在 Reason 前加 "[path|weakness]" 前缀，让落库日志能回溯走的是哪一段
-```
+`ticket.New(st, pipeline, opts...)` 只接受 `*assign.Pipeline`，**pipeline 为 nil 时 panic**：
+这里已没有可退回的"默认派单器"，静默兜底会造出"以为在跑流水线其实没跑"这类最难诊断的问题。
 
-生产入口 `cmd/helpdesk-agent/dispatch.go` 的 `newTicketService` 按环境开关装配：
+生产装配在 `cmd/helpdesk-agent/dispatch.go`：
 
 ```
-DISPATCH_PIPELINE=on    切到三段流水线；否则默认 legacy Assigner
-LLM_API_KEY / -api-key  提供模型时 Stage 2 用 OpenAIChooser；无模型（demo/offline）时不注入 chooser，判弱样本直落人工池
+newTicketService(st, chatModel)     serve / chat / demo 入口；chatModel 可为 nil
+newDispatchService(st, chooser)     评测命令逐用例装配，不打 banner
 ```
 
-启动时把当前模式打到 stderr —— 派单结果差异背后就是这个开关，不打印会出现
-"以为在跑 pipeline 其实没跑"这类无法回溯的误判。`serve` / `chat` / `demo` 三个入口共用这套装配。
+Stage 2 是否启用只由"有没有模型"决定：
 
-一期默认仍走 legacy：pipeline 只在有限样本上验证过，`make eval-assign`（120+30）测的是旧 Assigner。
-`ServiceMatchFloor` 默认 0.25 是在 14 条服务字典上按 BM25 分数分布定的，需用 v2 数据集重新校准。
+```
+-api-key / LLM_API_KEY  有模型 → OpenAIChooser（enum 约束 top-5 + ESCALATE_HUMAN）
+无模型（离线 / demo）    不注入 chooser → 判弱样本直落 Stage 3 人工池，而非退回 Stage 1 强派
+```
+
+`newTicketService` 启动时把 Stage 2 的实际状态打到 stderr。两种模式的派单结果差异很大，
+不打印就只能事后猜。离线评测（`eval-trajectory` / `eval-realtickets`）刻意不注入 chooser：
+派单里多一次 LLM 调用会污染轮次、延迟、token 三个轴，派单质量由 `eval-assign-v2` 单独测。
+
+`AssignmentLog.Reason` 无条件带 `[path=...|weakness=...]` 前缀（`runAssignment` 添加），
+所以派单历史里能直接 grep 出走的是哪一段。一期默认仍按此形态跑：`ServiceMatchFloor` 0.25
+是在 14 条服务字典上按 BM25 分数分布定的，样本量决定了它需要随字典增长复标。
 
 **未接线事项**：`ticket.Service.AssignToBest` 用 `context.Background()` 驱动 Stage 2 ——
 store 层尚未透传 ctx，所以请求取消时进行中的 LLM 调用不会中断。一期不影响正确性，接生产需补 ctx 贯穿。
@@ -337,7 +361,8 @@ store 层尚未透传 ctx，所以请求取消时进行中的 LLM 调用不会�
 | `PHASE_ROADMAP.md` | 长期规划；本文档只覆盖下一层（一期能落地的最小版本） |
 | `dispatch-matching-best-practices.md`（`/Users/mac/dev_projects/cv/`） | 外部参考系；本文档是**取舍后的实现**，比参考系少 hybrid/Bandit/GraphRAG/LTR 四件套 |
 | `EVALUATION_PLAN.md` | 指标定义权威；本文档 §4 只是漏斗视角的复述 |
-| 现有派单轴（`eval/datasets/assignment.json` + `assignment_hard.json`） | 降级为"排序段单元回归"，README 明写不测端到端准确率 |
+| 派单轴（`eval/datasets/assignment_v2.json` 45 条） | 唯一的派单评测：三轴 + 漏斗；`internal/eval/pipeline_v2_test.go` 以下限形式锁住 §4.1 的数字，退化即红 |
 
-**验证节奏**：Task #2 → #3 → #4 → #6 → #5 → #7 → #8（`make check`）。
-每一步都保持 `make check` 绿；不出现"改到一半"的状态。
+**验证节奏**：`make check`（fmt + vet + test）保证实现没有偏离宣称的规则；
+`make eval`（`eval-assign-v2`）出三轴与漏斗。派单后端只有流水线一条路径，
+所以"测试绿"与"线上跑的是同一套打分"这两件事现在是同一件事。

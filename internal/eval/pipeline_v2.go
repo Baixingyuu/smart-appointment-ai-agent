@@ -1,8 +1,7 @@
 // 三段流水线的评测 runner。
 //
-// 与 v1 RunAssignmentEval 并列，不共享实现。原因：v1 只测排序（Assigner.Assign → 单值 gold），
-// v2 要拆成三段独立可归因的轴：抽取 / 判弱 / 排序。混在一个 runner 里，任何一段回归都会
-// 污染其他段的数据。
+// 三段拆成三个独立轴各打一次分，而不是压成一个通过率：混在一起时
+// 任何一段回归都会污染其他段的读数，失败也无法归因。
 //
 // 数据集 schema 见 eval/datasets/gen_v2.py。三段金标全部规则派生，本 runner 证明的是
 // "pipeline 实现 == 我们宣称的规则"，不是外部准确率；对外准确率声明需要挂人工标注卡。
@@ -31,7 +30,7 @@ type PipelineV2Source struct {
 	OriginSubject  string `json:"originSubject,omitempty"`
 }
 
-// PipelineV2Ticket 待派单工单的原文（不含 requiredSkills；pipeline 从文本自解）。
+// PipelineV2Ticket 待派单工单的原文；只给文本，服务解析由 pipeline 自己完成。
 type PipelineV2Ticket struct {
 	Title       string `json:"title"`
 	Description string `json:"description"`

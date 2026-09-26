@@ -1,19 +1,15 @@
 // Command helpdesk-agent 是一期命令行入口。
 //
-// 一期只提供评测与自检命令：派单器不依赖 LLM，因此这套评测
-// 可以在没有任何模型配置的情况下完整复现。
+// 评测与自检命令默认离线：派单走三段流水线的 Stage 1/3（纯确定性，不依赖 LLM），
+// 因此这套评测可以在没有任何模型配置的情况下完整复现。
+// 只有 serve / chat，以及显式关闭 -offline-stage2 的派单评测需要模型配置。
 package main
 
 import (
 	"encoding/json"
-	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
-
-	"github.com/mac/helpdesk-agent/internal/assign"
-	"github.com/mac/helpdesk-agent/internal/eval"
 )
 
 func main() {
@@ -23,11 +19,6 @@ func main() {
 	}
 
 	switch os.Args[1] {
-	case "eval-assign":
-		if err := runEvalAssign(os.Args[2:]); err != nil {
-			fmt.Fprintf(os.Stderr, "错误: %v\n", err)
-			os.Exit(1)
-		}
 	case "eval-assign-v2":
 		if err := runEvalAssignV2(os.Args[2:]); err != nil {
 			fmt.Fprintf(os.Stderr, "错误: %v\n", err)
@@ -84,8 +75,7 @@ func usage() {
   helpdesk-agent serve [选项]         启动 HTTP 服务
   helpdesk-agent chat [选项]          人工测试对话窗口（每回合轨迹落 JSONL 样本）
   helpdesk-agent demo                 跑一遍完整工单链路（建单/派单/去重/升级/完成）
-  helpdesk-agent eval-assign [选项]   运行指派评测
-  helpdesk-agent eval-assign-v2 [选项] 运行三段流水线指派评测（抽取/判弱/排序三轴）
+  helpdesk-agent eval-assign-v2 [选项] 运行三段流水线派单评测（抽取/判弱/排序三轴）
   helpdesk-agent eval-retrieval [选项]  运行检索召回评测
   helpdesk-agent eval-intent [选项]   运行意图分类评测
   helpdesk-agent eval-trajectory [选项]  运行轨迹评测（工具选择/轮次/成本/延迟）
@@ -130,11 +120,6 @@ chat 选项:
       -model=qwen3:8b
     或直接 make chat-local
 
-eval-assign 选项:
-  -dataset string   评测集路径，可重复指定（默认同时运行基础集与对抗集）
-  -json string      把机读报告写入该路径
-  -quiet            只输出汇总
-
 eval-assign-v2 选项:
   -dataset string   v2 评测集路径（默认 eval/datasets/assignment_v2.json）
   -json string      把机读报告写入该路径
@@ -142,64 +127,6 @@ eval-assign-v2 选项:
                     关掉此标志需要同时提供 LLM 配置：
   -base-url / -api-key / -model   Stage 2 用的 LLM 服务
 `)
-}
-
-func runEvalAssign(args []string) error {
-	fs := flag.NewFlagSet("eval-assign", flag.ContinueOnError)
-	var datasets multiFlag
-	fs.Var(&datasets, "dataset", "评测集路径，可重复指定（默认同时运行基础集与对抗集）")
-	jsonPath := fs.String("json", "", "机读报告输出路径")
-	quiet := fs.Bool("quiet", false, "只输出汇总")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-
-	paths := datasets
-	if len(paths) == 0 {
-		paths = defaultDatasetPaths()
-	}
-
-	assigner := assign.New(assign.DefaultWeights())
-	suite := eval.SuiteReport{}
-
-	for _, path := range paths {
-		dataset, err := eval.LoadAssignmentDataset(path)
-		if err != nil {
-			return err
-		}
-		report := eval.RunAssignmentEval(dataset, assigner)
-		suite.Datasets = append(suite.Datasets, eval.DatasetReport{
-			Name:   filepath.Base(path),
-			Path:   path,
-			Report: report,
-		})
-	}
-
-	suite.Summarize()
-	if *quiet {
-		for i := range suite.Datasets {
-			suite.Datasets[i].Report.Failures = nil
-		}
-	}
-	fmt.Print(suite.Text())
-
-	if *jsonPath != "" {
-		if err := writeJSON(*jsonPath, suite); err != nil {
-			return err
-		}
-		fmt.Printf("\n机读报告已写入 %s\n", *jsonPath)
-	}
-	return nil
-}
-
-// multiFlag 支持重复出现的字符串参数。
-type multiFlag []string
-
-func (m *multiFlag) String() string { return strings.Join(*m, ",") }
-
-func (m *multiFlag) Set(value string) error {
-	*m = append(*m, value)
-	return nil
 }
 
 func writeJSON(path string, payload any) error {
@@ -216,32 +143,4 @@ func writeJSON(path string, payload any) error {
 		return fmt.Errorf("写入报告: %w", err)
 	}
 	return nil
-}
-
-// defaultDatasetPaths 相对仓库根定位评测集，
-// 使命令在任意工作目录下执行都能找到数据。
-// 两份数据集都会返回（存在才列出）：
-//   - assignment.json       基础集，覆盖各匹配场景
-//   - assignment_hard.json  对抗集，用于证明评测具备区分能力
-func defaultDatasetPaths() []string {
-	names := []string{"assignment.json", "assignment_hard.json"}
-	dirs := []string{
-		"eval/datasets",
-		"../eval/datasets",
-		"../../eval/datasets",
-	}
-	var ret []string
-	for _, name := range names {
-		for _, dir := range dirs {
-			path := filepath.Join(dir, name)
-			if _, err := os.Stat(path); err == nil {
-				ret = append(ret, path)
-				break
-			}
-		}
-	}
-	if len(ret) == 0 {
-		ret = append(ret, filepath.Join("eval", "datasets", "assignment.json"))
-	}
-	return ret
 }

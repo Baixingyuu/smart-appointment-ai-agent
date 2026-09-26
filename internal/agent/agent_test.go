@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/mac/helpdesk-agent/internal/assign"
+	"github.com/mac/helpdesk-agent/internal/conversation"
 	"github.com/mac/helpdesk-agent/internal/domain"
 	"github.com/mac/helpdesk-agent/internal/llm"
 	"github.com/mac/helpdesk-agent/internal/rag"
@@ -99,11 +100,19 @@ func finalReply(text string) *llm.Response {
 
 // harness 组装一套完整但全部离线的测试装置。
 type harness struct {
-	agent    *Agent
-	model    *fakeModel
-	store    *store.Memory
-	tickets  *ticket.Service
-	testsNow time.Time
+	agent         *Agent
+	model         *fakeModel
+	store         *store.Memory
+	tickets       *ticket.Service
+	conversations *conversation.Service
+	turns         *turnSink
+	testsNow      time.Time
+}
+
+// turnSink 记录最近一次 Agent 回合的完整结果，供端到端断言读取
+// （conversation.SendResult 只透出 Reply/Interrupted/TicketID）。
+type turnSink struct {
+	last *TurnResult
 }
 
 type harnessOption func(*harnessConfig)
@@ -113,6 +122,7 @@ type harnessConfig struct {
 	retriever  bool
 	config     Config
 	classifier IntentClassifier
+	intake     *IntakeConfig
 }
 
 // withoutRetriever 表示不配置知识库，用于验证 no_knowledge 分支。
@@ -130,6 +140,24 @@ func withClassifier(classifier IntentClassifier) harnessOption {
 	return func(c *harnessConfig) { c.classifier = classifier }
 }
 
+// withIntake 启用建单交互（可追溯性判定 + 进展驱动追问）。
+func withIntake(cfg IntakeConfig) harnessOption {
+	return func(c *harnessConfig) { c.intake = &cfg }
+}
+
+// seedDirectoryProvider 从 seed 包构造完整 Directory。
+//
+// pipeline 缺 Services 时一律判 no_service_match，所以这条夹具是 owner 直派用例的前提。
+func seedDirectoryProvider() ticket.DirectoryProvider {
+	return ticket.DirectoryProviderFunc(func(emps []domain.Employee) assign.Directory {
+		return assign.Directory{
+			Employees:  emps,
+			Extensions: seed.ExtensionsByEmployeeID(),
+			Services:   seed.ServicesByID(),
+		}
+	})
+}
+
 func newHarness(t *testing.T, responses []*llm.Response, opts ...harnessOption) *harness {
 	t.Helper()
 
@@ -145,7 +173,15 @@ func newHarness(t *testing.T, responses []*llm.Response, opts ...harnessOption) 
 		t.Fatalf("加载种子数据失败: %v", err)
 	}
 
-	tickets := ticket.New(st, assign.New(assign.DefaultWeights()), ticket.WithClock(func() time.Time { return now }))
+	pipeline := assign.NewPipeline(
+		assign.NewBM25ServiceResolver(3),
+		assign.NoopSimilarIndex{},
+		nil,
+	)
+	tickets := ticket.New(st, pipeline,
+		ticket.WithDirectoryProvider(seedDirectoryProvider()),
+		ticket.WithClock(func() time.Time { return now }),
+	)
 
 	var retriever *rag.Retriever
 	if cfg.retriever {
@@ -175,11 +211,38 @@ func newHarness(t *testing.T, responses []*llm.Response, opts ...harnessOption) 
 	if cfg.classifier != nil {
 		agentOpts = append(agentOpts, WithClassifier(cfg.classifier))
 	}
+	if cfg.intake != nil {
+		agentOpts = append(agentOpts, WithIntake(*cfg.intake))
+	}
 	ag, err := New(model, st, retriever, tickets, config, agentOpts...)
 	if err != nil {
 		t.Fatalf("构造 Agent 失败: %v", err)
 	}
-	return &harness{agent: ag, model: model, store: st, tickets: tickets, testsNow: now}
+
+	// 会话编排走与生产一致的接缝：客户消息先落库，再触发 Agent 回合。
+	// 端到端建单交互用例必须走这条路——只有它会把用户原话写进 store，
+	// 可追溯性判定的语料（customerCorpus）才有内容（修 D1 结构盲区）。
+	// sink 抓住完整 TurnResult：conversation.SendResult 只回传 Reply/Interrupted/TicketID，
+	// 而追问断言要看工具调用记录（awaiting_user_info 的观察里"一次列全"的证据）。
+	sink := &turnSink{}
+	convos := conversation.New(st, conversation.TurnExecutorFunc(
+		func(_ context.Context, conversationID int64, message string) (conversation.TurnOutcome, error) {
+			result, err := ag.Run(context.Background(), TurnInput{
+				ConversationID: conversationID,
+				UserMessage:    message,
+			})
+			if err != nil {
+				return conversation.TurnOutcome{}, err
+			}
+			sink.last = result
+			return conversation.TurnOutcome{
+				Reply:       result.Reply,
+				Interrupted: result.Interrupted,
+				TicketID:    result.TicketID,
+			}, nil
+		}))
+
+	return &harness{agent: ag, model: model, store: st, tickets: tickets, conversations: convos, turns: sink, testsNow: now}
 }
 
 // seedKnowledgeChunks 提供小规模知识库，与 RAG 包中的测试数据保持一致。
@@ -352,9 +415,9 @@ func TestWriteToolCreatesInterruptInsteadOfWriting(t *testing.T) {
 	}
 }
 
-func TestConfirmCreatesTicketAndAssignsSpecialist(t *testing.T) {
+func TestConfirmCreatesTicketAndAssignsServiceOwner(t *testing.T) {
 	h := newHarness(t, []*llm.Response{
-		toolCall("call-1", ToolCreateConfirm, `{"title":"接口鉴权异常","description":"401 报错","category":"incident","priority":"P1","skillIds":[2,3]}`),
+		toolCall("call-1", ToolCreateConfirm, `{"title":"核心下单接口持续返回 500，订单无法创建","description":"下单接口错误率升至 35%，全部线上用户受影响。","category":"incident","priority":"P1"}`),
 	})
 
 	if first := h.runTurn(t, 200, "建个工单"); !first.Interrupted {
@@ -376,9 +439,9 @@ func TestConfirmCreatesTicketAndAssignsSpecialist(t *testing.T) {
 		t.Fatalf("期望 1 张工单，实际 %d", len(tickets))
 	}
 	ticket := tickets[0]
-	// 技能 [2,3] 对应接口专才（张伟 101）。
+	// 命中服务 2001「核心下单接口」→ Stage 1 直派其 owner 张伟（101）。
 	if ticket.AssigneeID != 101 {
-		t.Fatalf("应按技能指派 101，实际 %d", ticket.AssigneeID)
+		t.Fatalf("应派给下单接口 owner 101，实际 %d", ticket.AssigneeID)
 	}
 	if ticket.Status != domain.TicketStatusPending {
 		t.Errorf("新建工单应为 pending，实际 %s", ticket.Status)

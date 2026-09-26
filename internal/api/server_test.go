@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -25,13 +26,20 @@ func newTestServer(t *testing.T) (http.Handler, store.Store) {
 	if err := seed.Load(st); err != nil {
 		t.Fatalf("加载种子数据失败: %v", err)
 	}
-	tickets := ticket.New(st, assign.New(assign.DefaultWeights()))
+	// 派单后端只有三段流水线。服务字典与员工扩展必须注入：缺了它们
+	// pipeline 一律判 no_service_match 落 Stage 3，就测不到"命中服务→直派 owner"这条主路径。
+	pipeline := assign.NewPipeline(
+		assign.NewBM25ServiceResolver(3),
+		assign.NoopSimilarIndex{},
+		nil,
+	)
+	tickets := ticket.New(st, pipeline, ticket.WithDirectoryProvider(seedDirectoryProvider()))
 
 	// 桩执行器：回显消息，并在消息里含「工单」时模拟建单。
-	executor := conversation.TurnExecutorFunc(func(conversationID int64, message string) (conversation.TurnOutcome, error) {
+	executor := conversation.TurnExecutorFunc(func(_ context.Context, conversationID int64, message string) (conversation.TurnOutcome, error) {
 		outcome := conversation.TurnOutcome{Reply: "回复：" + message}
 		if strings.Contains(message, "建单") {
-			created, err := tickets.Create(ticketInput(conversationID, message))
+			created, err := tickets.Create(context.Background(), ticketInput(conversationID, message))
 			if err != nil {
 				return conversation.TurnOutcome{}, err
 			}
@@ -57,10 +65,20 @@ func ticketInput(conversationID int64, title string) domain.TicketInput {
 		Description:    "由测试构造的工单描述",
 		Category:       domain.CategoryIncident,
 		Priority:       domain.PriorityP2,
-		RequiredSkill:  domain.NewSkillSet(2, 3),
 		ConversationID: conversationID,
 		SourceChannel:  "web",
 	}
+}
+
+// seedDirectoryProvider 从 seed 包构造完整 Directory，与生产装配同形态。
+func seedDirectoryProvider() ticket.DirectoryProvider {
+	return ticket.DirectoryProviderFunc(func(emps []domain.Employee) assign.Directory {
+		return assign.Directory{
+			Employees:  emps,
+			Extensions: seed.ExtensionsByEmployeeID(),
+			Services:   seed.ServicesByID(),
+		}
+	})
 }
 
 func doJSON(t *testing.T, handler http.Handler, method, path string, body any) (*httptest.ResponseRecorder, map[string]any) {
@@ -302,7 +320,7 @@ func TestListTicketsAndDetail(t *testing.T) {
 	convID := createConversation(t, handler)
 
 	doJSON(t, handler, http.MethodPost, "/api/conversations/"+itoa(convID)+"/messages",
-		map[string]any{"content": "帮我建单：接口 500", "requestId": "req-lt"})
+		map[string]any{"content": "帮我建单：核心下单接口持续返回 500，订单无法创建", "requestId": "req-lt"})
 
 	recorder, list := doJSON(t, handler, http.MethodGet, "/api/tickets", nil)
 	if recorder.Code != http.StatusOK {
@@ -316,9 +334,9 @@ func TestListTicketsAndDetail(t *testing.T) {
 	if first["assigneeId"].(float64) == 0 {
 		t.Error("工单应已被指派")
 	}
-	// 技能需求必须返回：它是「按经验派单」的可解释依据。
-	if first["requiredSkills"] == nil {
-		t.Error("应返回技能需求")
+	// 派单依据是服务归属，所以 DTO 必须带出处理人是谁；技能字段已随技能层删除。
+	if name, _ := first["assigneeName"].(string); strings.TrimSpace(name) == "" {
+		t.Error("应返回处理人姓名")
 	}
 
 	ticketID := int64(first["id"].(float64))
@@ -327,8 +345,13 @@ func TestListTicketsAndDetail(t *testing.T) {
 		t.Fatalf("期望 200，实际 %d", recorder.Code)
 	}
 	// 指派理由与进展时间线必须可查：业务方据此复核「为什么派给他」。
-	if detail["assignments"] == nil {
-		t.Error("应返回指派理由")
+	// 理由必须带流水线观测前缀 —— 技能层删除后，这是唯一可复核的派单依据。
+	raw, ok := detail["assignments"].([]any)
+	if !ok || len(raw) == 0 {
+		t.Fatalf("应返回指派理由，实际 %v", detail["assignments"])
+	}
+	if reason, _ := raw[0].(string); !strings.HasPrefix(reason, "[stage") {
+		t.Errorf("指派理由应带 pipeline path 前缀，实际 %q", reason)
 	}
 	progress, ok := detail["progress"].([]any)
 	if !ok || len(progress) == 0 {
@@ -336,13 +359,8 @@ func TestListTicketsAndDetail(t *testing.T) {
 	}
 }
 
-func TestListSkillsAndEmployees(t *testing.T) {
+func TestListEmployees(t *testing.T) {
 	handler, _ := newTestServer(t)
-
-	_, skills := doJSON(t, handler, http.MethodGet, "/api/skills", nil)
-	if len(skills["results"].([]any)) == 0 {
-		t.Error("应返回技能树")
-	}
 
 	_, employees := doJSON(t, handler, http.MethodGet, "/api/employees", nil)
 	results := employees["results"].([]any)

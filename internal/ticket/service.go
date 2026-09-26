@@ -19,14 +19,14 @@ import (
 
 // Service 工单业务服务。
 //
-// dispatcher 与 directory 是"派单"这条子流程的两个可替换点：
-//   - dispatcher：一期默认 legacyAssigner；接进三段流水线时显式换成 pipelineDispatcher
+// 派单后端固定是三段流水线（pipeline 字段），可替换的是装配它时的 Stage 2 chooser
+// 与每次派单看到的数据目录：
 //   - directory：默认只提供 Employees；pipeline 需要服务字典与员工扩展时用 WithDirectoryProvider
 type Service struct {
-	store      store.Store
-	dispatcher Dispatcher
-	directory  DirectoryProvider
-	now        func() time.Time
+	store     store.Store
+	pipeline  *assign.Pipeline
+	directory DirectoryProvider
+	now       func() time.Time
 }
 
 // workflow 是包级的无状态工作流校验器。
@@ -55,26 +55,19 @@ func WithDirectoryProvider(p DirectoryProvider) Option {
 	}
 }
 
-// New 构造工单服务，使用旧的 *assign.Assigner 派单。
+// New 构造工单服务，派单后端为三段流水线。
 //
-// 保留这个入口是为了让既有 API / 测试 / eval 零改动。接进 pipeline 请显式用 NewWith。
-func New(st store.Store, assigner *assign.Assigner, opts ...Option) *Service {
-	return NewWith(st, NewLegacyDispatcher(assigner), opts...)
-}
-
-// NewWith 用任意 Dispatcher 构造服务。pipeline 走这个入口。
-//
-// dispatcher 为 nil 时回退到 legacy 默认 Assigner，与 New(st, nil) 行为一致。
-// 这样调用方拿不到 dispatcher 时的兜底是"回到一期上线时的行为"，不是 crash。
-func NewWith(st store.Store, dispatcher Dispatcher, opts ...Option) *Service {
-	if dispatcher == nil {
-		dispatcher = NewLegacyDispatcher(nil)
+// pipeline 为 nil 时 panic：这里没有可退回的"默认派单器"了。静默兜底会造成
+// "以为在跑流水线，其实没跑"——这类问题在生产里最难诊断。
+func New(st store.Store, pipeline *assign.Pipeline, opts ...Option) *Service {
+	if pipeline == nil {
+		panic("ticket.New: pipeline 不能为 nil")
 	}
 	svc := &Service{
-		store:      st,
-		dispatcher: dispatcher,
-		directory:  emptyDirectoryProvider(),
-		now:        time.Now,
+		store:     st,
+		pipeline:  pipeline,
+		directory: emptyDirectoryProvider(),
+		now:       time.Now,
 	}
 	for _, opt := range opts {
 		opt(svc)
@@ -92,12 +85,12 @@ type CreateResult struct {
 	Assignment domain.AssignmentLog
 }
 
-// Create 创建工单并按技能派单。
+// Create 创建工单并按服务归属派单。
 //
 // 去重规则：同一会话已存在未关闭工单时，不重复建单，改为追加进展。
 // 真实场景中用户常就同一问题反复追问，若每次都建单会产生大量重复工单，
 // 也会让处理人看到多张内容相近的待办。
-func (s *Service) Create(input domain.TicketInput) (CreateResult, error) {
+func (s *Service) Create(ctx context.Context, input domain.TicketInput) (CreateResult, error) {
 	input.Title = strings.TrimSpace(input.Title)
 	input.Description = strings.TrimSpace(input.Description)
 	if input.Title == "" {
@@ -124,7 +117,6 @@ func (s *Service) Create(input domain.TicketInput) (CreateResult, error) {
 		Category:       input.Category,
 		Priority:       input.Priority,
 		Status:         domain.TicketStatusPending,
-		RequiredSkill:  input.RequiredSkill,
 		ConversationID: input.ConversationID,
 		SourceChannel:  input.SourceChannel,
 	}
@@ -145,7 +137,7 @@ func (s *Service) Create(input domain.TicketInput) (CreateResult, error) {
 		return CreateResult{}, err
 	}
 
-	log, err := s.AssignToBest(id, 0)
+	log, err := s.AssignToBest(ctx, id, 0)
 	if err != nil {
 		return CreateResult{}, err
 	}
@@ -160,10 +152,9 @@ func (s *Service) Create(input domain.TicketInput) (CreateResult, error) {
 //
 // excludeEmployeeID 用于升级场景：排除当前处理人，避免把工单又派回给他。
 //
-// ctx 这里固定用 context.Background()：Store 层不感知 ctx，Service 方法签名也没接；
-// 若未来把 request ctx 打通到 Service，Stage 2 的 LLM 调用才能真正被上游取消。
-// 记在 docs/DISPATCH_PIPELINE.md §5 的"未接线事项"里。
-func (s *Service) AssignToBest(ticketID, excludeEmployeeID int64) (domain.AssignmentLog, error) {
+// ctx 自 2026-09-25 起打通到 request ctx：Stage 2 的 LLM 调用可被上游取消，
+// 派单过程事件（resolve/candidates/stage2/done）也经 ctx 里的 DispatchObserver 外显。
+func (s *Service) AssignToBest(ctx context.Context, ticketID, excludeEmployeeID int64) (domain.AssignmentLog, error) {
 	t, err := s.store.GetTicket(ticketID)
 	if err != nil {
 		return domain.AssignmentLog{}, err
@@ -174,11 +165,10 @@ func (s *Service) AssignToBest(ticketID, excludeEmployeeID int64) (domain.Assign
 
 	candidates := s.candidates(excludeEmployeeID)
 	dir := s.directory.Provide(candidates)
-	log, err := s.dispatcher.Dispatch(context.Background(), t, dir)
+	log, err := runAssignment(ctx, s.pipeline, t, dir)
 	if err != nil {
 		return domain.AssignmentLog{}, err
 	}
-	log.TicketID = ticketID
 
 	if err := s.store.AppendAssignmentLog(log); err != nil {
 		return domain.AssignmentLog{}, err
@@ -252,8 +242,8 @@ func (s *Service) Resolve(ticketID, employeeID int64) (domain.Ticket, error) {
 // Escalate 升级工单：排除当前处理人后重新派单。
 //
 // 真实场景里升级是必要的——首轮派单可能选错人，或问题超出该处理人的能力范围。
-// 若不排除原处理人，派单器很可能因为技能匹配度最高而再次选中他。
-func (s *Service) Escalate(ticketID int64, reason string) (domain.Ticket, domain.AssignmentLog, error) {
+// 若不排除原处理人，重新派单大概率又落回他身上：他正是这个服务的归属人。
+func (s *Service) Escalate(ctx context.Context, ticketID int64, reason string) (domain.Ticket, domain.AssignmentLog, error) {
 	t, err := s.store.GetTicket(ticketID)
 	if err != nil {
 		return domain.Ticket{}, domain.AssignmentLog{}, err
@@ -278,7 +268,7 @@ func (s *Service) Escalate(ticketID int64, reason string) (domain.Ticket, domain
 		return domain.Ticket{}, domain.AssignmentLog{}, err
 	}
 
-	log, err := s.AssignToBest(ticketID, previous)
+	log, err := s.AssignToBest(ctx, ticketID, previous)
 	if err != nil {
 		return domain.Ticket{}, domain.AssignmentLog{}, err
 	}
@@ -351,7 +341,7 @@ func (s *Service) candidates(excludeEmployeeID int64) []domain.Employee {
 			// 仍保留在候选列表中并标记为过滤，使「因升级被排除」有据可查。
 			emp.Active = false
 		}
-		emp.CurrentLoad = len(s.store.FindOpenTicketsBySkills(emp.ID))
+		emp.CurrentLoad = len(s.store.FindOpenTicketsByAssignee(emp.ID))
 		ret = append(ret, emp)
 	}
 	return ret

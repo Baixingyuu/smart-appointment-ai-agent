@@ -9,6 +9,7 @@ import (
 	"github.com/mac/helpdesk-agent/internal/agent"
 	"github.com/mac/helpdesk-agent/internal/assign"
 	"github.com/mac/helpdesk-agent/internal/classify"
+	"github.com/mac/helpdesk-agent/internal/domain"
 	"github.com/mac/helpdesk-agent/internal/llm"
 	"github.com/mac/helpdesk-agent/internal/rag"
 	"github.com/mac/helpdesk-agent/internal/seed"
@@ -47,7 +48,18 @@ func TestLiveAgentAgainstDeepSeek(t *testing.T) {
 	if err := seed.Load(st); err != nil {
 		t.Fatalf("加载种子失败: %v", err)
 	}
-	tickets := ticket.New(st, assign.New(assign.DefaultWeights()))
+	// 外部测试包看不到 agent_test.go 里的夹具，Directory 就地内联构造。
+	tickets := ticket.New(st,
+		assign.NewPipeline(assign.NewBM25ServiceResolver(3), assign.NoopSimilarIndex{}, nil),
+		ticket.WithDirectoryProvider(ticket.DirectoryProviderFunc(
+			func(emps []domain.Employee) assign.Directory {
+				return assign.Directory{
+					Employees:  emps,
+					Extensions: seed.ExtensionsByEmployeeID(),
+					Services:   seed.ServicesByID(),
+				}
+			})),
+	)
 	retriever := seed.NewBM25Retriever(rag.DefaultOptions())
 
 	ag, err := agent.New(model, st, retriever, tickets, agent.DefaultConfig(),

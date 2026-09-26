@@ -72,15 +72,25 @@ func runServe(args []string) error {
 
 	// 注入意图分类器以启用路由短路：寒暄与无关请求无需走完整工具链路。
 	classifier := classify.New(chatModel)
+	// 建单交互 + 确认判定 LLM 主判（2026-09-25）：
+	//   - 两级可追溯判定（规则级只做"明显可追溯"的加速命中，其余交语义模型）；
+	//   - 确认表态由 LLM 带草案与用户原话上下文判定，关键词阶梯降为失败回退。
+	// 离线模式下这两个组件的模型调用都会失败并走各自的确定性回退，链路仍可演示。
 	ag, err := agent.New(chatModel, st, retriever, tickets, agent.DefaultConfig(),
-		agent.WithClassifier(evalrun.NewClassifierRunner(classifier)))
+		agent.WithClassifier(evalrun.NewClassifierRunner(classifier)),
+		agent.WithIntake(agent.IntakeConfig{
+			Checker: agent.NewTwoLevelTraceabilityChecker(chatModel, agent.DefaultTraceabilityConfig()),
+			Gating:  true,
+		}),
+		agent.WithConfirmationJudge(&agent.LLMConfirmationJudge{Model: chatModel}),
+	)
 	if err != nil {
 		return err
 	}
 
 	// 会话编排把「客户消息 → Agent 回合 → 回复落库」串起来。
-	turnExecutor := conversation.TurnExecutorFunc(func(conversationID int64, message string) (conversation.TurnOutcome, error) {
-		result, err := ag.Run(context.Background(), agent.TurnInput{
+	turnExecutor := conversation.TurnExecutorFunc(func(ctx context.Context, conversationID int64, message string) (conversation.TurnOutcome, error) {
+		result, err := ag.Run(ctx, agent.TurnInput{
 			ConversationID: conversationID,
 			UserMessage:    message,
 		})
@@ -119,7 +129,7 @@ func runServe(args []string) error {
 	fmt.Printf("    POST /api/conversations/{id}/messages\n")
 	fmt.Printf("    POST /api/conversations/{id}/close\n")
 	fmt.Printf("    GET  /api/tickets  |  GET /api/tickets/{id}\n")
-	fmt.Printf("    GET  /api/skills   |  GET /api/employees\n")
+	fmt.Printf("    GET  /api/employees\n")
 	if *offline {
 		fmt.Printf("\n注意：当前为离线脚本模型模式，回复来自预设脚本，\n")
 		fmt.Printf("不代表真实模型的对话与工具调用能力。接入真实模型请提供 -api-key。\n")

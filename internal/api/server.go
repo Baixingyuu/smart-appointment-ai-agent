@@ -12,12 +12,19 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
+	"github.com/mac/helpdesk-agent/internal/agent"
+	"github.com/mac/helpdesk-agent/internal/assign"
 	"github.com/mac/helpdesk-agent/internal/conversation"
 	"github.com/mac/helpdesk-agent/internal/domain"
+	"github.com/mac/helpdesk-agent/internal/eval"
+	"github.com/mac/helpdesk-agent/internal/seed"
 	"github.com/mac/helpdesk-agent/internal/store"
 	"github.com/mac/helpdesk-agent/internal/ticket"
 )
@@ -56,8 +63,10 @@ func (s *Server) Handler() http.Handler {
 
 	mux.HandleFunc("GET /api/tickets", s.handleListTickets)
 	mux.HandleFunc("GET /api/tickets/{id}", s.handleGetTicket)
-	mux.HandleFunc("GET /api/skills", s.handleListSkills)
 	mux.HandleFunc("GET /api/employees", s.handleListEmployees)
+
+	// 派单评测（离线跑 v2 数据集，返回机读报告供前端可视化与事后审查）。
+	mux.HandleFunc("POST /api/eval/assign-v2", s.handleRunEval)
 
 	return jsonifyStdlibErrors(mux)
 }
@@ -73,6 +82,12 @@ func (s *Server) Handler() http.Handler {
 // ServeMux 还会追加一段纯文本，逐次改写会输出两段 JSON（实测踩过）。
 func jsonifyStdlibErrors(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// SSE 流式请求必须透传：不能缓冲（否则事件要等整轮跑完才发出，失去实时性），
+		// 也不能包装 ResponseWriter（否则丢失 http.Flusher，SSE 无法逐段推送）。
+		if strings.Contains(r.Header.Get("Accept"), "text/event-stream") {
+			next.ServeHTTP(w, r)
+			return
+		}
 		buffer := &bufferedResponse{header: make(http.Header), status: http.StatusOK}
 		next.ServeHTTP(buffer, r)
 
@@ -195,17 +210,16 @@ type conversationDetailDTO struct {
 }
 
 type ticketDTO struct {
-	ID            int64    `json:"id"`
-	Title         string   `json:"title"`
-	Description   string   `json:"description,omitempty"`
-	Category      string   `json:"category"`
-	Priority      string   `json:"priority"`
-	Status        string   `json:"status"`
-	AssigneeID    int64    `json:"assigneeId,omitempty"`
-	AssigneeName  string   `json:"assigneeName,omitempty"`
-	RequiredSkill []int64  `json:"requiredSkills,omitempty"`
-	MissingInfo   []string `json:"missingInfo,omitempty"`
-	Conversation  int64    `json:"conversationId,omitempty"`
+	ID           int64    `json:"id"`
+	Title        string   `json:"title"`
+	Description  string   `json:"description,omitempty"`
+	Category     string   `json:"category"`
+	Priority     string   `json:"priority"`
+	Status       string   `json:"status"`
+	AssigneeID   int64    `json:"assigneeId,omitempty"`
+	AssigneeName string   `json:"assigneeName,omitempty"`
+	MissingInfo  []string `json:"missingInfo,omitempty"`
+	Conversation int64    `json:"conversationId,omitempty"`
 }
 
 type ticketDetailDTO struct {
@@ -220,19 +234,12 @@ type progressDTO struct {
 	At      string `json:"at"`
 }
 
-type skillDTO struct {
-	ID       int64  `json:"id"`
-	ParentID int64  `json:"parentId,omitempty"`
-	Name     string `json:"name"`
-}
-
 type employeeDTO struct {
-	ID            int64   `json:"id"`
-	Name          string  `json:"name"`
-	Active        bool    `json:"active"`
-	Skills        []int64 `json:"skills"`
-	CurrentLoad   int     `json:"currentLoad"`
-	MaxConcurrent int     `json:"maxConcurrent"`
+	ID            int64  `json:"id"`
+	Name          string `json:"name"`
+	Active        bool   `json:"active"`
+	CurrentLoad   int    `json:"currentLoad"`
+	MaxConcurrent int    `json:"maxConcurrent"`
 }
 
 // ---- handlers ----
@@ -304,7 +311,13 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 		requestID = defaultRequestID(id, req.Content)
 	}
 
-	result, err := s.conversations.Send(id, req.Content, requestID)
+	// SSE 流式：客户端显式声明 Accept: text/event-stream 时走流式返回。
+	if strings.Contains(r.Header.Get("Accept"), "text/event-stream") {
+		s.handleSendMessageSSE(w, r, id, req, requestID)
+		return
+	}
+
+	result, err := s.conversations.Send(r.Context(), id, req.Content, requestID)
 	if err != nil {
 		// 会话已关闭与不存在都是客户端可纠正的问题，用 4xx 而非 500。
 		if errors.Is(err, domain.ErrConversationClosed) {
@@ -336,6 +349,66 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// handleSendMessageSSE 以 Server-Sent Events 流式返回一次消息处理：
+//   - event: event  回合事件（round / tool / confirm），数据为 agent.TurnEvent JSON
+//   - event: delta  回复文本增量，数据为 {"text":"..."}
+//   - event: done   回合结束，数据含 duplicate / interrupted / ticketId
+//   - event: error  出错信息
+//
+// 事件与文本增量在 agent 运行过程中实时推送（经 agent.WithStreamSink 注入 context），
+// 使前端能在工具执行的同时逐步展开步骤、逐字滚出回复。
+func (s *Server) handleSendMessageSSE(w http.ResponseWriter, r *http.Request, id int64, req sendMessageRequest, requestID string) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, errors.New("当前 HTTP 实现不支持 SSE"))
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no") // 关掉反向代理缓冲，让事件即时到达
+
+	sink := &agent.StreamSink{
+		OnDelta: func(delta string) {
+			writeSSEEvent(w, flusher, "delta", map[string]any{"text": delta})
+		},
+		OnEvent: func(e agent.TurnEvent) {
+			writeSSEEvent(w, flusher, "event", e)
+		},
+	}
+	ctx := agent.WithStreamSink(r.Context(), sink)
+	// 派单过程事件（服务解析 → 候选排序 → LLM 决策 → 完成）也走 SSE。
+	ctx = assign.WithDispatchObserver(ctx, func(e assign.DispatchEvent) {
+		writeSSEEvent(w, flusher, "dispatch", e)
+	})
+
+	result, err := s.conversations.Send(ctx, id, req.Content, requestID)
+	if err != nil {
+		writeSSEEvent(w, flusher, "error", map[string]any{"error": err.Error()})
+		return
+	}
+
+	done := map[string]any{"duplicate": result.Duplicate}
+	if result.Reply != nil {
+		done["reply"] = result.Reply.Content
+	}
+	if result.Turn != nil {
+		done["interrupted"] = result.Turn.Interrupted
+		done["ticketId"] = result.Turn.TicketID
+	}
+	writeSSEEvent(w, flusher, "done", done)
+}
+
+// writeSSEEvent 序列化并 flush 一条 SSE 事件。
+func writeSSEEvent(w http.ResponseWriter, flusher http.Flusher, event string, data any) {
+	payload, err := json.Marshal(data)
+	if err != nil {
+		payload = []byte(`{}`)
+	}
+	fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, payload)
+	flusher.Flush()
 }
 
 func (s *Server) handleCloseConversation(w http.ResponseWriter, r *http.Request) {
@@ -385,43 +458,86 @@ func (s *Server) handleGetTicket(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
-func (s *Server) handleListSkills(w http.ResponseWriter, _ *http.Request) {
-	items := s.store.ListSkills()
-	ret := make([]skillDTO, 0, len(items))
-	for _, item := range items {
-		ret = append(ret, skillDTO{ID: item.ID, ParentID: item.ParentID, Name: item.Name})
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"results": ret, "total": len(ret)})
-}
-
 func (s *Server) handleListEmployees(w http.ResponseWriter, _ *http.Request) {
 	items := s.store.ListEmployees()
 	ret := make([]employeeDTO, 0, len(items))
 	for _, item := range items {
 		ret = append(ret, employeeDTO{
 			ID: item.ID, Name: item.Name, Active: item.Active,
-			Skills:        item.Skills.IDs(),
-			CurrentLoad:   len(s.store.FindOpenTicketsBySkills(item.ID)),
+			CurrentLoad:   len(s.store.FindOpenTicketsByAssignee(item.ID)),
 			MaxConcurrent: item.MaxConcurrent,
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"results": ret, "total": len(ret)})
 }
 
+// handleRunEval 跑一遍派单 v2 评测并返回机读报告。
+//
+// 与 CLI（make eval）同一套逻辑（eval.RunPipelineV2Eval），差别只在这里返回 JSON
+// 供前端渲染：三轴通过率、Stage 漏斗、以及逐条失败样本（事后审查的依据）。
+//
+// 评测姿态固定为离线：不注入 Stage 2 chooser、员工负载归零。否则同一条 case
+// 两次跑会因为负载漂移落到不同员工，指标不可复现。
+func (s *Server) handleRunEval(w http.ResponseWriter, _ *http.Request) {
+	path := locateEvalDataset()
+	ds, err := eval.LoadPipelineV2Dataset(path)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Errorf("加载评测集 %s: %w", path, err))
+		return
+	}
+	pipeline := assign.NewPipeline(
+		assign.NewBM25ServiceResolver(3),
+		assign.NoopSimilarIndex{},
+		nil,
+	)
+	rep := eval.RunPipelineV2Eval(ds, pipeline, evalDirectory())
+	rep.Dataset = filepath.Base(path)
+	writeJSON(w, http.StatusOK, rep)
+}
+
+// locateEvalDataset 相对工作目录定位 v2 评测集。serve 从仓库根启动时可直接命中，
+// 其余情况依次向上回退，避免换目录就 500。
+func locateEvalDataset() string {
+	candidates := []string{
+		"eval/datasets/assignment_v2.json",
+		"../eval/datasets/assignment_v2.json",
+		"../../eval/datasets/assignment_v2.json",
+	}
+	for _, p := range candidates {
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	return candidates[0]
+}
+
+// evalDirectory 构造评测专用目录：员工负载全部归零，保证可复现。
+// 生产路径的实时负载由 ticket.Service.candidates 计算，不走这里。
+func evalDirectory() assign.Directory {
+	emps := seed.Employees()
+	for i := range emps {
+		emps[i].CurrentLoad = 0
+	}
+	return assign.Directory{
+		Employees:  emps,
+		Extensions: seed.ExtensionsByEmployeeID(),
+		Services:   seed.ServicesByID(),
+	}
+}
+
 // ---- 辅助 ----
 
 func (s *Server) toTicketDTO(t domain.Ticket) ticketDTO {
 	dto := ticketDTO{
-		ID:            t.ID,
-		Title:         t.Title,
-		Description:   t.Description,
-		Category:      string(t.Category),
-		Priority:      string(t.Priority),
-		Status:        string(t.Status),
-		AssigneeID:    t.AssigneeID,
-		RequiredSkill: t.RequiredSkill.IDs(),
-		MissingInfo:   t.MissingInfo,
-		Conversation:  t.ConversationID,
+		ID:           t.ID,
+		Title:        t.Title,
+		Description:  t.Description,
+		Category:     string(t.Category),
+		Priority:     string(t.Priority),
+		Status:       string(t.Status),
+		AssigneeID:   t.AssigneeID,
+		MissingInfo:  t.MissingInfo,
+		Conversation: t.ConversationID,
 	}
 	if t.AssigneeID > 0 {
 		if emp, err := s.store.GetEmployee(t.AssigneeID); err == nil {

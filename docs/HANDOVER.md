@@ -1,8 +1,9 @@
-# 交接文档 · 评测体系（2026-09-18）
+# 交接文档 · 评测体系（2026-09-18，含 09-23 / 09-24 两次增补）
 
 > 这份文档面向**接手评测体系的人**（也包括下一次打开仓库的自己）。
 > 它回答三件事：现在测到了什么、这些数字哪些能信哪些不能、下一步该动哪里。
 > 详细方法论在 `docs/EVALUATION.md`，此处不重复，只标差异与状态。
+> **§10（09-23）与 §11（09-24）是现状；§1–§9 保留为当时的判断快照。**
 
 ---
 
@@ -10,13 +11,15 @@
 
 | 轴 | 命令 | 当前数字 | 这个数字的含义 |
 |---|---|---|---|
-| 指派匹配 | `make eval` | Top-1 100%（150 样本） | **实现与规格一致**，不是真实准确率（金标由派单规则推导） |
+| 指派匹配 | `make eval` | v2 三轴 42/45、38/45、34/40 + 漏斗 35/0/10（45 条）——**没有一轴满分**，口径见 `DISPATCH_PIPELINE.md §4.1` | **实现与规则一致**（金标 `formula-derived`），不是真实准确率。此前的「Top-1 100%（150 样本）」随技能层于 2026-09-24 作废 |
 | 意图路由 | `make eval-intent`（需密钥） | 真实模型 98.33% / 关键词基线 54.44%（`ARGS="-offline"`） | 真实模型显著优于规则基线；短路比例 45.6% |
 | 检索召回 | `make eval-retrieval` | Recall@5 92.5%，门控后有证据 69/80，假命中率 10% | BM25 + 置信门控，全部数字可由该命令复现 |
 | 执行轨迹 | `make eval-trajectory` | scripted 100% / **live 68.75%** | scripted 是链路自检；live 才测模型能力（该行为 09-18 的 16 用例快照，当前口径与数字见 §10.2） |
 | 成本与延迟 | 同上（报告内） | live：prompt 42,277 / total 51,527 token，P50 3.6s、P95 10.4s | 一次完整 live run 约 5 万 token（同上，当前口径见 §10.2） |
 
-**本次会话的全部改动仍未提交**（`git status` 7 个 M + 未跟踪 `docs/sum.md`、`docs/HANDOVER.md`）。
+本文档 §1–§9 是 2026-09-18/09-19 的快照，与 §10、§11 冲突时以后者为准。
+**改动始终未提交**：截至 2026-09-24 全部工作仍在工作区，是否提交由用户决定，
+不要假设 HEAD 与工作区一致——`git status` 才是现状。
 报告目录 `eval/reports/*.json` 被 `.gitignore` 忽略——是可再生产物，
 要当回归基线长期保存需显式 `git add -f`。
 
@@ -49,23 +52,25 @@ RAG 只有一种错法（答得不对），agent 有四类各自独立的错法�
 
 | 位置 | 职责 |
 |---|---|
-| `internal/eval/{assignment,intent,retrieval,trajectory}.go` | 四份断言与报告，纯函数，不碰业务写路径 |
+| `internal/eval/{pipeline_v2,intent,retrieval,trajectory}.go` | 四份断言与报告，纯函数，不碰业务写路径 |
 | `cmd/helpdesk-agent/eval_*.go` | 各轴的 CLI 入口、数据集装载、sabotage/模型注入 |
 | `internal/evalrun/runner.go` | 把「回合观测」喂给断言的适配器（执行与判定分离） |
 | `internal/agent/{agent,routing}.go` | 被测对象：工具循环 + 意图短路 |
 | `internal/tooling/` | 工具治理：白名单 → 风险 → 预算 → 确认 |
-| `eval/datasets/*.json` | 数据集；`eval/verify_datasets.py` 独立复核金标 |
+| `eval/datasets/*.json` | 数据集。金标**没有第二套独立实现复核**（`verify_datasets.py` 已随技能层删除，2026-09-24），现由 `internal/eval/pipeline_v2_test.go` 守金标↔目录一致性与回归下限 |
 
 ### 2.4 五条红线（改动时不要破）
 
 1. **评测是观察者**：业务不得 import `internal/eval`，评测不得写业务表。
 2. **指标可复现**：不使用 LLM 作为评判者——工具序列是结构化的，可精确比对
    （论证见 `EVALUATION.md` §1 的「是否需要 LLM 评判」一行）。
-3. **派单器是纯函数**：可测性的前提。
+3. **Stage 1 是纯函数**：只依赖传入的 `Directory`（员工 + 扩展 + 服务字典）与配置，
+   取数（含实时负载重算）留在 `ticket` 层。这是"同一输入必得同一输出"的前提；
+   全链路只有 Stage 2 会调模型，离线评测刻意不注入 chooser。
 4. **依赖单向**：`domain` ← 其他，反向 import 一律拒绝。
 5. **授权与流程分离**：确认中断管流程，工具治理管授权，两者不互相顶替。
 
-### 2.5 三条使用纪律
+### 2.5 四条使用纪律
 
 1. **看报告先看 `mode`**。轨迹报告没有 `mode` 字段就等于没有结论——
    scripted 的 100% 与 live 的 100% 是两个完全不同的命题。
@@ -73,29 +78,44 @@ RAG 只有一种错法（答得不对），agent 有四类各自独立的错法�
    对应指标必须下降；不降说明断言写空了。
 3. **改数据集或配置后必须重测文档表格**。`EVALUATION.md` §7 的表本次就因此漂移过
    （移除 tj-011 的 `minRounds` 让 `always_write` 从 18.8% 变成 25.0%）。
+4. **指派轴的缺陷注入在单测层**（`-sabotage` CLI 开关与 v1 对抗集都不在了）。
+   `internal/assign/pipeline_test.go` 里三个 `TestSabotage_*` 用 `WithoutOwnershipBoost()` /
+   `MarginThreshold=0` / `WithoutLLMEnumGuard()` 注入，各自断言结果必须翻转，
+   并配有"守卫生效"的对照测试。要改代码才能跑，不像轨迹轴一条命令——详见 `EVALUATION.md` §7。
 
 ---
 
 ## 3. 命令速查
 
 ```bash
-make check                    # fmt + vet + test + verify-data（不含评测报告）
-make verify-data              # 用精确有理数独立复核金标
-make eval                     # 指派（基础集 + 对抗集）
+make check                    # fmt + vet + test（不含评测报告；原先的 verify-data 已随技能层删除）
+make eval                     # 指派 v2：45 条，三轴 + Stage 漏斗（离线，Stage 2 不注入）
 make eval-intent ARGS="-offline"              # 意图：关键词基线（零成本）
 make eval-retrieval                           # 检索：Recall@K / MRR / 假命中率
 make eval-trajectory                          # 轨迹：离线脚本，链路自检
 make eval-trajectory ARGS="-sabotage=always_write"   # 评测自证（仅脚本模式）
 
-# 轨迹 live 模式（本次新增）：给密钥就用真实模型测能力，零代码改动
+# 轨迹 live 模式：默认用本地 qwen3:8b（ollama），零 API 成本
+make eval-trajectory-local                    # = -base-url http://localhost:11434/v1 -model qwen3:8b
+# 云端模型需密钥；只通过环境变量前缀传入，不写进任何文件
 LLM_API_KEY=sk-xxx make eval-trajectory ARGS="-json eval/reports/trajectory_live.json"
-# 也可显式指定服务与模型
-LLM_API_KEY=sk-xxx make eval-trajectory ARGS="-base-url=... -model=..."
 ```
+
+**退出码**：`make eval` 只要有任一条与金标不一致就以非零退出（当前 8 条），
+所以它**不能串进 `&&` 链、也不能当门禁**；`make check` 刻意不含评测轴，两者不可混用。
 
 默认模型 `deepseek-flash`，默认 `base-url` 为 DeepSeek 官方 `/v1`；
 `-api-key` 缺省时读 `LLM_API_KEY`。`-sabotage` 与 `-api-key` 互斥
 （脚本级缺陷注入对真实模型无意义），同时给出会直接报错。
+代码默认模型 ≠ 日常测试模型：2026-09-19 起**默认测试模型是本地 qwen3:8b**（temp=0 方差为 0、零成本）。
+
+派单轴要让 Stage 2 真的调模型，得显式关掉离线开关（其余两轴不受影响）：
+
+```bash
+make eval ARGS="-offline-stage2=false -base-url=http://localhost:11434/v1 -api-key=ollama -model=qwen3:8b"
+```
+
+不接模型时 Stage 2 命中率与幻觉率是**未测**，不是 0%。
 
 ---
 
@@ -158,19 +178,21 @@ PassRate **68.75%**（11/16）、ToolAccuracy 55.56%、OrderAccuracy 50%、
 
 **成立的部分**（都由执行验证，不是读文档得出的）：
 分轴设计对应四类独立失败；sabotage 四种缺陷确实命中**不同**指标（不是只有 PassRate 动）；
-金标由 `verify_datasets.py` 用 `Fraction` 独立复算，与生成脚本不共用代码，避免了循环论证；
 评测不写业务表；成本有逐轮归因且固定开销被测试上界锁住（766 token / 3 工具）。
+**（09-18 曾列在此处的「金标由 `verify_datasets.py` 用 `Fraction` 独立复算、与生成脚本不共用代码」
+已于 2026-09-24 随技能层删除，不再成立——见下表 #2b。）**
 
 **弱点清单**（含本次已关闭项）：
 
 | # | 弱点 | 状态 |
 |---|---|---|
 | 1 | 轨迹 scripted 模式循环论证，真实能力从未测过 | ✅ 本次关闭（live 模式） |
-| 2 | 指派轴金标来自规则推导，100% 不等于真实准确率 | ⏳ 需要历史「人工实际指派」数据（三期） |
+| 2 | 指派轴金标来自规则推导，高分不等于真实准确率 | ⏳ 需要历史「人工实际指派」数据（三期）。v2 现状：42/45、38/45、34/40，**已不是满分**，且 8 条不一致可逐条归因 |
+| 2b | 指派轴**缺第二套独立实现交叉校验**（09-18 曾有：`verify_datasets.py` 用 `Fraction` 复算、不 import 生成器） | ❌ 2026-09-24 随技能层删除，风险回到「校验只能证明代码等于自己」。替代防线只剩 `pipeline_v2_test.go` 的三条，弱于原方案 |
 | 3 | 检索不可回答集缺同域近邻负例，FPR 区分力有限 | ⏳ 未动 |
 | 4 | 报告不带「怎么生成」元数据。两个实例：`intent_baseline.json` 其实**是真实模型跑的**（prompt=38,627，关键词基线 token=0），命名与含义相反；`retrieval_baseline.json` 里的 70% 假命中率用当前代码复现不出来（`-threshold` 打 0.0001/0.05/0.1 三档均仍为 10%），它是门控阈值重定标之前的历史产物（其 58 与 `EVALUATION.md` §3.5 表里的 53/80 也对不上，无法归因到任何已记录配置） | ⏳ 未动，见 §7 |
 | 5 | 无回归基线与新鲜度门禁：`make check` 不比对报告。实例——磁盘上的 `retrieval.json` 记的是 `decidedHitOnAnswerable=44`，而当前代码 fresh run 为 **69**（文档 §3.5 同样是 69/80），其余字段一字不差，说明它是门控重定标前的残留，且**没有任何机制会报警** | ⚠️ 本次已重新生成该报告，门禁机制仍未动 |
-| 6 | live 指标单次运行，未测方差——68.75% 里有多少是噪声未知 | ⏳ 未动 |
+| 6 | live 指标单次运行，未测方差——68.75% 里有多少是噪声未知 | ✅ 2026-09-19 关闭：本地 qwen3:8b、temp=0，三轮逐项一致 ⇒ 方差=0（`EVALUATION_PLAN.md` 执行记录） |
 | 7 | 无「回答质量」轴：只测做了什么，不测答得好不好 | ⏳ 三期；LLM-judge 只能在这一层、隔离接入，并先用人工标注元验证 |
 
 关于 LLM-as-judge 的结论（第二次提问的答案）：**不是现在的第一优先级**。
@@ -262,3 +284,53 @@ judge 只在「答得好不好」这一层补，且单独出一份报告，不�
    出现了用户从未说过的「已尝试联系财务确认政策，但未获明确答复」。
    这是起草忠实度问题，需要「描述忠实度」断言或 judge 轴才能稳定测出，
    当前轨迹轴只看调了哪些工具，看不见这句话。
+
+---
+
+## 11. 增补（2026-09-24）：派单轴换轨 + 技能层删除
+
+与 §1、§6 的旧表述冲突时以本节为准。
+
+### 11.1 指派轴现在是 v2 四轴，旧的 150/150 全部作废
+
+| 轴 | 数字 | 有效分母 |
+|---|---|---|
+| 服务解析 Top-1 | 42/45 = 93.33% | 45 |
+| 判弱原因一致 | 38/45 = 84.44% | 45 |
+| 排序 winner 一致 | 34/40 = 85.00% | **40**（5 条兜底样本无期望处理人） |
+| Stage 漏斗 | 35 / 0 / 10 | 45 |
+
+Stage 2 = 0 是**离线刻意不注入 chooser**，所以"命中率/幻觉率"这一格是未测而非 0%。
+8 条不一致逐条归因：4 条金标过期（`ownershipScore` 重标定后没同步）+ 4 条服务解析召回
+（其中 dp-v2-038/041 连带排序判错）。**没有重打金标把分数抬上去**。
+
+### 11.2 删除清单（§1–§9 里指向不存在的东西）
+
+`SkillSet`/`Skill`、`Employee.Skills`、`Ticket.RequiredSkill`、`skillIds` 工具参数、
+`s_skill` 特征、legacy `Assigner` + `Dispatcher` 双实现 + `DISPATCH_PIPELINE` 环境开关、
+`/api/skills`、种子技能、`assignment.json`(120) + `assignment_hard.json`(30)、
+`gen_hard_dataset.py`、`verify_datasets.py`、`make verify-data`、`eval/annotation/`。
+
+**净退步（不要粉饰）**：金标第二套独立实现（`Fraction` 精确复算）没了，
+§6 的 #2b 是本次改动换来的真实代价。
+
+### 11.3 建单交互三支柱：能力有测试，链路没接、比率没测
+
+`agent.TraceabilityChecker`（规则级 + 两级）、`ticket/blocking_slots.go`、确认阶梯的
+`forceCommit`、进展驱动追问，端到端由 `internal/agent/intake_test.go` 的 **8 条用例 + 3 条 sabotage**
+覆盖（`go test` 会跑，含"阈值是承重的"这类自证）。两个缺口仍然真实：
+
+1. **没接生产链路**：`WithIntake` 只有测试里调过，`serve.go`/`chat.go`/`demo.go` 都没接，
+   所以线上行为与一期一致（`traceability == nil` 时整段跳过）。
+2. **没有比率型指标轴**：`cmd/helpdesk-agent/` 里没有对应的 `eval_*.go`。
+   「追问放弃率」「描述忠实度检出率」这两格目前是**无数字**，不是 100%——
+   8 条用例能证明机制按设计走，不能给出率。
+
+这是主线 ② 当前最大的空洞：**能力已实现并锁进测试，证据还没成轴**。
+
+### 11.4 接手先做这三件事
+
+1. 把 `WithIntake` 接进 `serve.go`（一个开关的事），然后跑一次真实模型 A/B，
+   否则 §11.3 这一节会一直停在"实现了但不可信"。
+2. 按 v2 schema 重建人工标注表，先对齐 4 条过期金标（`EVALUATION_PLAN.md` 待办 #3）。
+3. 派单轴接本地 qwen3:8b 跑一次 Stage 2 live，把"未测"那一格变成数字（`make eval ARGS="-offline-stage2=false ..."`）。

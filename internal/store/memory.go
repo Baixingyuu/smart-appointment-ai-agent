@@ -27,16 +27,12 @@ type Store interface {
 	GetEmployee(id int64) (domain.Employee, error)
 	ListEmployees() []domain.Employee
 
-	// 技能
-	SaveSkill(s domain.Skill) error
-	ListSkills() []domain.Skill
-
 	// 工单
 	SaveTicket(t domain.Ticket) (int64, error)
 	GetTicket(id int64) (domain.Ticket, error)
 	ListTickets() []domain.Ticket
-	// FindOpenTicketsBySkills 返回指定处理人名下未完成的工单，用于负载计算。
-	FindOpenTicketsBySkills(assigneeID int64) []domain.Ticket
+	// FindOpenTicketsByAssignee 返回指定处理人名下未完成的工单，用于负载计算。
+	FindOpenTicketsByAssignee(assigneeID int64) []domain.Ticket
 	// FindOpenTicketsByConversation 返回指定会话下未完成的工单，
 	// 用于创建前的去重检查：同一会话已有未关闭工单时不应重复建单。
 	FindOpenTicketsByConversation(conversationID int64) []domain.Ticket
@@ -76,7 +72,6 @@ type Memory struct {
 	mu sync.RWMutex
 
 	employees  map[int64]domain.Employee
-	skills     map[int64]domain.Skill
 	tickets    map[int64]domain.Ticket
 	nextTicket int64
 
@@ -103,7 +98,6 @@ type Memory struct {
 func NewMemory() *Memory {
 	return &Memory{
 		employees:     make(map[int64]domain.Employee),
-		skills:        make(map[int64]domain.Skill),
 		tickets:       make(map[int64]domain.Ticket),
 		interrupts:    make(map[int64]domain.Interrupt),
 		conversations: make(map[int64]domain.Conversation),
@@ -151,27 +145,6 @@ func (m *Memory) ListEmployees() []domain.Employee {
 	return ret
 }
 
-func (m *Memory) SaveSkill(s domain.Skill) error {
-	if err := s.Validate(); err != nil {
-		return err
-	}
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.skills[s.ID] = s
-	return nil
-}
-
-func (m *Memory) ListSkills() []domain.Skill {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	ret := make([]domain.Skill, 0, len(m.skills))
-	for _, s := range m.skills {
-		ret = append(ret, s)
-	}
-	sort.Slice(ret, func(i, j int) bool { return ret[i].ID < ret[j].ID })
-	return ret
-}
-
 // SaveTicket 保存工单。ID 为 0 时自动分配并返回新 ID。
 func (m *Memory) SaveTicket(t domain.Ticket) (int64, error) {
 	if t.ID <= 0 {
@@ -213,7 +186,7 @@ func (m *Memory) ListTickets() []domain.Ticket {
 	return ret
 }
 
-func (m *Memory) FindOpenTicketsBySkills(assigneeID int64) []domain.Ticket {
+func (m *Memory) FindOpenTicketsByAssignee(assigneeID int64) []domain.Ticket {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	var ret []domain.Ticket

@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/mac/helpdesk-agent/internal/agent"
-	"github.com/mac/helpdesk-agent/internal/assign"
 	"github.com/mac/helpdesk-agent/internal/classify"
 	"github.com/mac/helpdesk-agent/internal/eval"
 	"github.com/mac/helpdesk-agent/internal/evalrun"
@@ -18,7 +17,6 @@ import (
 	"github.com/mac/helpdesk-agent/internal/rag"
 	"github.com/mac/helpdesk-agent/internal/seed"
 	"github.com/mac/helpdesk-agent/internal/store"
-	"github.com/mac/helpdesk-agent/internal/ticket"
 )
 
 // liveTurnTimeout 单条消息的执行上限。
@@ -169,7 +167,7 @@ func executeCaseOnce(item eval.TrajectoryCase, model llm.ChatModel, sabotage str
 	if err := seed.Load(st); err != nil {
 		return nil, err
 	}
-	tickets := ticket.New(st, assign.New(assign.DefaultWeights()))
+	tickets := newDispatchService(st, nil)
 	retriever := seed.NewBM25Retriever(rag.DefaultOptions())
 
 	var chat llm.ChatModel
@@ -285,10 +283,8 @@ func replyResponse(text string) *llm.Response {
 func caseScript(item eval.TrajectoryCase, sabotage string) []*llm.Response {
 	title := safeTitle(item)
 	issue := "测试用例构造的问题描述，用于验证工具链路"
-	draftArgs := fmt.Sprintf(
+	ticketArgs := fmt.Sprintf(
 		`{"title":%q,"description":%q,"category":"incident","priority":"P2"}`, title, issue)
-	confirmArgs := fmt.Sprintf(
-		`{"title":%q,"description":%q,"category":"incident","priority":"P2","skillIds":[2,3]}`, title, issue)
 
 	switch sabotage {
 	case "unknown_tool":
@@ -299,7 +295,7 @@ func caseScript(item eval.TrajectoryCase, sabotage string) []*llm.Response {
 	case "always_write":
 		// 无视是否该建单一律建单：应被安全越界率抓到。
 		return []*llm.Response{
-			callResponse("s1", toolConfirm, confirmArgs),
+			callResponse("s1", toolConfirm, ticketArgs),
 			replyResponse("已建单。"),
 		}
 	case "skip_rag":
@@ -329,7 +325,7 @@ func caseScript(item eval.TrajectoryCase, sabotage string) []*llm.Response {
 		ordered = item.Expect.Tools
 	}
 	if len(ordered) == 0 && item.Expect.ExpectTicketCreated != nil && *item.Expect.ExpectTicketCreated {
-		ordered = []string{toolRAGSearch, toolFindOpen, toolDraft, toolConfirm}
+		ordered = []string{toolRAGSearch, toolFindOpen, toolConfirm}
 	}
 
 	for _, code := range ordered {
@@ -338,10 +334,8 @@ func caseScript(item eval.TrajectoryCase, sabotage string) []*llm.Response {
 			appendCall(code, fmt.Sprintf(`{"query":%q}`, title))
 		case toolFindOpen:
 			appendCall(code, fmt.Sprintf(`{"topic":%q}`, title))
-		case toolDraft:
-			appendCall(code, draftArgs)
 		case toolConfirm:
-			appendCall(code, confirmArgs)
+			appendCall(code, ticketArgs)
 		}
 	}
 
@@ -369,11 +363,13 @@ func safeTitle(item eval.TrajectoryCase) string {
 	return text
 }
 
-// 工具编码常量。
+// 工具编码常量，与 agent 实际注册的工具一一对应。
+//
+// 曾经还有 toolDraft = "ticket_create_draft"：该工具因与 confirm 参数几乎全同已移除，
+// 脚本夹具里保留它只会让默认序列发出一个 unknown_tool 调用。
 const (
 	toolRAGSearch = "rag_search"
 	toolFindOpen  = "ticket_find_open_by_topic"
-	toolDraft     = "ticket_create_draft"
 	toolConfirm   = "ticket_create_confirm"
 )
 

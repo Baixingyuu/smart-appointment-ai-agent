@@ -1,10 +1,10 @@
 // 服务字典、团队目录与员工扩展（ownership / level / team / profile）。
 //
-// 与 Skills()/Employees() 并行存在：现有 120+30 派单数据集围绕旧 SkillSet 打分，
-// 保持零改动继续跑通；新增的 pipeline 段用本文件的字典作为 ownership 与
-// Stage 2 prompt 的数据来源。见 docs/DISPATCH_PIPELINE.md §5。
+// 技能层删除后，这里就是派单的唯一数据来源：Stage 1 用服务字典做归属解析，
+// 用员工扩展决定谁负责、级别是否够接 P0。见 docs/DISPATCH_PIPELINE.md §5。
 //
-// 编号约定：ServiceID 从 2001 起、TeamID 从 1 起，避开技能 ID 段（1-12 + 1001/1002）。
+// 编号约定：ServiceID 从 2001 起、TeamID 从 1 起，且必须保持稳定——
+// 员工扩展与评测金标都按 ID 引用它们。
 package seed
 
 import (

@@ -1,12 +1,11 @@
 // 归属模型：Service / Team / EmployeeExtension。
 //
-// 为什么新增这一层：真实派单的第一因是"谁负责这个业务"，不是"谁有相关技能"。
-// 现有 Employee / Ticket 只建模了技能集合，缺一个可解析、可审计的中间产物 —— 服务节点。
-// 见 docs/DISPATCH_PIPELINE.md §1.1。
+// 派单的第一因是"谁负责这个业务"，所以这一层不是附加维度，而是派单的数据来源：
+// 工单文本 → 服务节点 → 归属人，见 docs/DISPATCH_PIPELINE.md §1.1。
 //
-// 与现有 domain.go 的关系：本文件纯增量，不改 Employee / Ticket 的字段。
-// EmployeeExtension 通过 EmployeeID 关联到 Employee；pipeline 用一份索引把两者拼起来，
-// 这样现有派单器（internal/assign/assigner.go）的单元测试与调用点零改动。
+// EmployeeExtension 独立于 Employee 而非并入其字段：Employee 描述的是
+// 「一个人的负载与容量」这类运行时状态，扩展描述的是「级别与归属关系」这类
+// 组织结构，两者的变更频率与数据来源都不同。pipeline 用索引把两者拼起来用。
 package domain
 
 import (
@@ -142,8 +141,8 @@ const (
 
 // EmployeeExtension 员工扩展属性：Level / OnCall / OwnedServices / TeamID / Profile。
 //
-// 独立结构而不扩 Employee 字段的原因见本文件顶部：保持现有 Assigner 与其
-// 120+30 数据集的单元测试零改动。pipeline 通过 index 把两者拼起来用。
+// 与 Employee 分列的原因见本文件顶部：组织结构与运行时负载分开，
+// pipeline 通过 index 把两者拼起来用。
 //
 // Profile 是给 Stage 2 LLM 看的自然语言摘要，一期手工写；
 // 真实系统里可以从 HR 系统 + 历史工单统计生成。写这段时**必须避免**

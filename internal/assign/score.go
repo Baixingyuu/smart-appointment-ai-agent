@@ -1,8 +1,7 @@
 // Stage 1.4：五特征加权打分。
 //
 // 特征与权重见 docs/DISPATCH_PIPELINE.md §1.4。核心决策：
-// ownership 一家独大（0.40），其余四项是次级调节。
-// Skill 权重不在这里 —— 一期设 0；现有 Jaccard 归旧 Assigner 承担"排序段回归"。
+// ownership 一家独大（0.40），其余四项是次级调节。这五档即派单的全部依据。
 package assign
 
 import (

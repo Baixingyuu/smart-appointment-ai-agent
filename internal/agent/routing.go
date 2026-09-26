@@ -59,7 +59,7 @@ func (a *Agent) shortCircuitReply(ctx context.Context, input TurnInput, outcome 
 		return nil, err
 	}
 
-	response, err := a.model.Chat(ctx, system, input.UserMessage)
+	response, err := a.callChat(ctx, system, input.UserMessage, a.streamDelta(ctx, input))
 	if err != nil {
 		// 回复生成失败：降级为一句可读的兜底话术，而不是把错误抛给用户。
 		response = &llm.Response{

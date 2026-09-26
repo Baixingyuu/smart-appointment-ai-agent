@@ -16,15 +16,14 @@ help:
 	@echo "  make serve-offline  启动 HTTP 服务（离线脚本模型，无需密钥）"
 	@echo "  make chat          人工测试对话窗口（需 LLM_API_KEY，样本落 eval/samples）"
 	@echo "  make chat-local    人工测试对话窗口（本地 qwen3:8b，零成本）"
-	@echo "  make eval        运行指派评测（基础集 + 对抗集）"
+	@echo "  make eval        运行派单评测（三段流水线：抽取/判弱/排序 + 漏斗）"
 	@echo "  make eval-intent 运行意图路由评测"
 	@echo "  make eval-retrieval 运行检索召回评测"
 	@echo "  make eval-trajectory 运行轨迹评测（可传 ARGS=\"-sabotage=...\"）"
 	@echo "  make eval-report 运行评测并写出 JSON 报告"
-	@echo "  make verify-data 独立校验评测集金标（精确有理数运算）"
 	@echo "  make fmt         格式化 Go 代码"
 	@echo "  make vet         静态检查"
-	@echo "  make check       fmt + vet + test + verify-data"
+	@echo "  make check       fmt + vet + test（含评测集金标校验与三段回归闸门）"
 	@echo "  make doctor      环境自检"
 
 .PHONY: fmt
@@ -51,9 +50,12 @@ serve:
 serve-offline:
 	$(GO) run ./cmd/helpdesk-agent serve -offline $(ARGS)
 
+# 派单评测：三段流水线（抽取 / 判弱 / 排序）+ Stage 分布漏斗。
+# 默认离线（不注入 Stage 2 chooser），因此零成本、可复现；
+# 想测 Stage 2 用 ARGS="-offline-stage2=false -api-key=..."。
 .PHONY: eval
 eval:
-	$(GO) run ./cmd/helpdesk-agent eval-assign
+	$(GO) run ./cmd/helpdesk-agent eval-assign-v2 $(ARGS)
 
 # 意图路由评测：准确率/Macro-F1/解析率 + 关键词基线对照
 #   make eval-intent ARGS="-offline"   零成本基线
@@ -112,16 +114,13 @@ eval-realtickets-local:
 .PHONY: eval-report
 eval-report:
 	@mkdir -p $(REPORT_DIR)
-	$(GO) run ./cmd/helpdesk-agent eval-assign -quiet -json $(REPORT_DIR)/assign.json
+	$(GO) run ./cmd/helpdesk-agent eval-assign-v2 -json $(REPORT_DIR)/assignment_v2.json
 
-# 独立校验：与生成脚本刻意分离，用精确有理数重算金标，
-# 避免「生成即验证」的循环论证。
-.PHONY: verify-data
-verify-data:
-	python3 eval/verify_datasets.py
-
+# 评测集校验已收进 Go 测试：internal/eval/pipeline_v2_test.go 会把金标里的
+# 服务/员工 ID 与 seed 目录对账，并跑一遍三段回归闸门。
+# 原先的 eval/verify_datasets.py 服务于已删除的 v1 技能数据集，随之一并删除。
 .PHONY: check
-check: fmt vet test verify-data
+check: fmt vet test
 	@echo ""
 	@echo "✓ 全部检查通过"
 

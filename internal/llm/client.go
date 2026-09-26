@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 
 	openai "github.com/openai/openai-go/v3"
@@ -122,6 +123,25 @@ type ToolRequest struct {
 	Tools    []ToolSchema
 }
 
+// StreamHandler 接收模型增量输出的一段文本，可能被多次调用，最终拼成完整回复。
+//
+// 实现应尽快返回、不阻塞：流式回调只做展示或追加，不参与业务决策。
+type StreamHandler func(delta string)
+
+// StreamingChatModel 是 ChatModel 的可选流式扩展。
+//
+// 独立成接口而非把流式方法塞进 ChatModel：多数桩实现（测试、离线脚本）
+// 不需要流式，塞进去会让每一个桩都背一个无意义的方法。
+// Agent 侧通过类型断言判断能力，未实现时回退非流式调用，行为与成本完全一致。
+type StreamingChatModel interface {
+	ChatModel
+	// ChatStream 流式无工具补全。onDelta 逐段接收文本增量，最终返回完整 Response。
+	ChatStream(ctx context.Context, system, user string, onDelta StreamHandler) (*Response, error)
+	// ChatWithToolsStream 流式带工具补全。onDelta 接收文本增量；工具调用在流结束后
+	// 从累积的 deltas 重建，随 Response.ToolCalls 返回。
+	ChatWithToolsStream(ctx context.Context, req ToolRequest, onDelta StreamHandler) (*Response, error)
+}
+
 // OpenAIModel 基于官方 SDK 的实现。
 type OpenAIModel struct {
 	client openai.Client
@@ -223,6 +243,158 @@ func (m *OpenAIModel) ChatWithTools(ctx context.Context, req ToolRequest) (*Resp
 		return nil, errors.New("模型返回空响应（无内容、无工具调用、无思考内容），疑似推理服务异常")
 	}
 	return response, nil
+}
+
+// ChatStream 流式无工具补全，语义与 Chat 相同，只是文本逐段经 onDelta 外发。
+//
+// 流式请求必须显式 include_usage，否则 token 用量不回传，成本轴会静默失真。
+func (m *OpenAIModel) ChatStream(ctx context.Context, system, user string, onDelta StreamHandler) (*Response, error) {
+	params := openai.ChatCompletionNewParams{
+		Model:    shared.ChatModel(m.config.Model),
+		Messages: m.buildMessages(system, []Message{{Role: RoleUser, Content: user}}, false),
+	}
+	m.applySampling(&params)
+	m.enableStreamUsage(&params)
+
+	stream := m.client.Chat.Completions.NewStreaming(ctx, params)
+	var sb strings.Builder
+	var usage Usage
+	for stream.Next() {
+		chunk := stream.Current()
+		if len(chunk.Choices) > 0 {
+			if d := chunk.Choices[0].Delta.Content; d != "" {
+				sb.WriteString(d)
+				if onDelta != nil {
+					onDelta(d)
+				}
+			}
+		}
+		usage = mergeUsage(usage, chunk.Usage)
+	}
+	if err := stream.Err(); err != nil {
+		return nil, fmt.Errorf("模型流式调用失败: %w", err)
+	}
+	_ = stream.Close()
+
+	content := strings.TrimSpace(sb.String())
+	if content == "" {
+		return nil, errors.New("模型返回空响应（流式无内容），疑似推理服务异常")
+	}
+	return &Response{Content: content, Usage: usage, Model: m.config.Model}, nil
+}
+
+// ChatWithToolsStream 流式带工具补全：文本逐段外发，工具调用从 deltas 重建。
+//
+// 工具调用的流式协议是分片累积：每个 delta 只带 Index / ID / Name / Arguments
+// 的一部分，必须按 Index 归并，否则参数会被截断成只有最后一段。
+// reasoning_content 同样以 delta 形式出现，逐段累加后回传，思维链模型才不会在
+// 下一轮被 400 拒掉（与 ChatWithTools 非流式路径的约束一致）。
+func (m *OpenAIModel) ChatWithToolsStream(ctx context.Context, req ToolRequest, onDelta StreamHandler) (*Response, error) {
+	if len(req.Tools) == 0 {
+		return nil, errors.New("ChatWithToolsStream 需要至少一个工具；无工具场景请用 ChatStream")
+	}
+	params := openai.ChatCompletionNewParams{
+		Model:    shared.ChatModel(m.config.Model),
+		Messages: m.buildMessages(req.System, req.Messages, true),
+		Tools:    m.buildTools(req.Tools),
+	}
+	m.applySampling(&params)
+	m.enableStreamUsage(&params)
+
+	stream := m.client.Chat.Completions.NewStreaming(ctx, params)
+	var sb, reasoning strings.Builder
+	toolCalls := map[int64]*ToolCall{}
+	var order []int64
+	var usage Usage
+	for stream.Next() {
+		chunk := stream.Current()
+		if len(chunk.Choices) > 0 {
+			delta := chunk.Choices[0].Delta
+			if delta.Content != "" {
+				sb.WriteString(delta.Content)
+				if onDelta != nil {
+					onDelta(delta.Content)
+				}
+			}
+			for _, tc := range delta.ToolCalls {
+				idx := tc.Index
+				if _, ok := toolCalls[idx]; !ok {
+					toolCalls[idx] = &ToolCall{}
+					order = append(order, idx)
+				}
+				cur := toolCalls[idx]
+				if tc.ID != "" {
+					cur.ID = tc.ID
+				}
+				if tc.Function.Name != "" {
+					cur.Name = tc.Function.Name
+				}
+				cur.Arguments += tc.Function.Arguments
+			}
+		}
+		reasoning.WriteString(extractReasoningDelta(chunk.RawJSON()))
+		usage = mergeUsage(usage, chunk.Usage)
+	}
+	if err := stream.Err(); err != nil {
+		return nil, fmt.Errorf("模型流式调用失败: %w", err)
+	}
+	_ = stream.Close()
+
+	response := &Response{
+		Content:          strings.TrimSpace(sb.String()),
+		ReasoningContent: reasoning.String(),
+		Usage:            usage,
+		Model:            m.config.Model,
+	}
+	sort.Slice(order, func(i, j int) bool { return order[i] < order[j] })
+	for _, idx := range order {
+		if strings.TrimSpace(toolCalls[idx].Name) != "" {
+			response.ToolCalls = append(response.ToolCalls, *toolCalls[idx])
+		}
+	}
+	if response.Content == "" && len(response.ToolCalls) == 0 && response.ReasoningContent == "" {
+		return nil, errors.New("模型返回空响应（无内容、无工具调用、无思考内容），疑似推理服务异常")
+	}
+	return response, nil
+}
+
+// enableStreamUsage 在流式请求上显式声明 include_usage，否则用量不回传。
+func (m *OpenAIModel) enableStreamUsage(params *openai.ChatCompletionNewParams) {
+	params.StreamOptions = openai.ChatCompletionStreamOptionsParam{IncludeUsage: openai.Bool(true)}
+}
+
+// mergeUsage 合并流式响应里出现的 usage 片段。usage 只在末尾 chunk 出现（include_usage=true），
+// 中途 chunk 的 Usage 全零；取最后一份非零值即可。
+func mergeUsage(current Usage, next openai.CompletionUsage) Usage {
+	if next.PromptTokens > 0 || next.CompletionTokens > 0 {
+		return Usage{PromptTokens: int(next.PromptTokens), CompletionTokens: int(next.CompletionTokens)}
+	}
+	return current
+}
+
+// extractReasoningDelta 从单个流式 chunk 的原始 JSON 中提取 reasoning_content 增量。
+//
+// 与非流式路径同源：reasoning_content 是 DeepSeek 等思维链模型的扩展字段，
+// SDK 未建模，只能读原始 JSON。解析失败返回空，最坏是下一轮因缺字段被拒并
+// 以明确 API 错误暴露，而不是静默吞掉。
+func extractReasoningDelta(rawJSON string) string {
+	if strings.TrimSpace(rawJSON) == "" {
+		return ""
+	}
+	var envelope struct {
+		Choices []struct {
+			Delta struct {
+				ReasoningContent string `json:"reasoning_content"`
+			} `json:"delta"`
+		} `json:"choices"`
+	}
+	if err := json.Unmarshal([]byte(rawJSON), &envelope); err != nil {
+		return ""
+	}
+	if len(envelope.Choices) == 0 {
+		return ""
+	}
+	return envelope.Choices[0].Delta.ReasoningContent
 }
 
 func (m *OpenAIModel) applySampling(params *openai.ChatCompletionNewParams) {

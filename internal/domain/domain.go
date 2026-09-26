@@ -1,8 +1,6 @@
 // Package domain 定义一期核心领域模型。
 //
 // 设计取舍：模型只承载数据与不变量，不含 HTTP、持久化或工作流逻辑。
-// 技能（Skill）即标签，采用层级结构，工单与员工各自持有技能集合，
-// 二者的交集是「相关处理经验」的唯一事实来源。
 package domain
 
 import (
@@ -52,7 +50,9 @@ func (p Priority) Weight() int {
 	}
 }
 
-// Category 工单分类，是技能匹配的主键来源。
+// Category 工单分类。
+//
+// 决定建单交互的阻塞槽位表（见 ticket/blocking_slots.go）；SLA 与派单顺序由 Priority 承担。
 type Category string
 
 const (
@@ -73,39 +73,11 @@ func (c Category) Valid() bool {
 	return false
 }
 
-// Skill 技能标签，层级化。
-//
-// ParentID 为 0 表示根节点。层级用于业务侧组织技能树
-// （如 网络 → 接口 / 性能），匹配时只看叶子集合，不看层级。
-type Skill struct {
-	ID       int64
-	ParentID int64
-	Name     string
-}
-
-// Validate 校验技能自身的合法性。
-func (s Skill) Validate() error {
-	if s.ID <= 0 {
-		return errors.New("skill id must be positive")
-	}
-	if strings.TrimSpace(s.Name) == "" {
-		return fmt.Errorf("skill %d: name is required", s.ID)
-	}
-	if s.ParentID == s.ID {
-		return fmt.Errorf("skill %d: cannot be its own parent", s.ID)
-	}
-	return nil
-}
-
 // Employee 处理人。
-//
-// SkillIDs 是方案 A（标签即技能）的核心：人工维护的技能集合。
-// 三期将由「自动技能画像」从历史工单统计生成并替换人工维护。
 type Employee struct {
 	ID            int64
 	Name          string
 	Active        bool
-	Skills        SkillSet
 	CurrentLoad   int     // 当前进行中的工单数
 	MaxConcurrent int     // 最大并发接待数，<=0 视为不限
 	Recency       float64 // 最近响应表现，0..1，越大越好
@@ -187,17 +159,21 @@ type TicketInput struct {
 	Description    string
 	Category       Category
 	Priority       Priority
-	RequiredSkill  SkillSet
 	ConversationID int64
 	SourceChannel  string
 	// MissingInfo 由调用方（对话流程）判定后传入，服务不再自行猜测。
 	MissingInfo []string
+	// Intake 携带"进展驱动追问"的跨轮状态，随确认中断一起落库。
+	//
+	// 只在启用建单交互时写入；omitempty 之外它对既有链路透明——旧草案没有该字段时
+	// 反序列化为零值，等价于"还没追问过"。
+	Intake IntakeProgress
 }
 
 // Ticket 工单。
 //
-// 与参考实现的差异：新增 CategoryID 与 Priority。
-// 前者是技能匹配的主键（参考实现的工单没有任何分类维度，导致无法匹配），
+// 与参考实现的差异：新增 Category 与 Priority。
+// 前者让建单交互能按类型选出阻塞槽位（参考实现的工单没有任何分类维度），
 // 后者用于派单排序与 SLA。
 type Ticket struct {
 	ID            int64
@@ -206,8 +182,7 @@ type Ticket struct {
 	Category      Category
 	Priority      Priority
 	Status        TicketStatus
-	RequiredSkill SkillSet // 由 Category + 标签推导出的技能需求向量
-	AssigneeID    int64    // 0 表示未指派
+	AssigneeID    int64 // 0 表示未指派
 	SourceChannel string
 
 	// ConversationID 关联的来源会话，0 表示非会话来源（人工建单）。
@@ -246,8 +221,8 @@ func (t *Ticket) Validate() error {
 type AssignmentOutcome string
 
 const (
-	OutcomeMatched      AssignmentOutcome = "matched"       // 按技能匹配成功
-	OutcomeFallbackPool AssignmentOutcome = "fallback_pool" // 无技能命中，退回待认领池
+	OutcomeMatched      AssignmentOutcome = "matched"       // 命中可派单的归属人
+	OutcomeFallbackPool AssignmentOutcome = "fallback_pool" // 判弱或无归属命中，退回待认领池
 	OutcomeNoCandidate  AssignmentOutcome = "no_candidate"  // 无任何可用处理人
 )
 
@@ -257,7 +232,7 @@ const (
 // （指派准确率需要金标对比）的共同前提。
 type AssignmentLog struct {
 	// ID 与 CreatedAt 由存储层在落库时填充，派单器本身不感知它们，
-	// 以保持 Assign 是纯函数。
+	// 以保持派单是纯函数。
 	ID         int64
 	TicketID   int64
 	AssigneeID int64
@@ -265,22 +240,24 @@ type AssignmentLog struct {
 	Reason     string
 	Score      float64
 	// Candidates 保存本次全部候选人的评分明细（含被过滤者）。
-	// 不保存明细就只能给出总分，无法复核「是不是因为负载而非技能胜出」。
+	// 不保存明细就只能给出总分，无法复核「是不是因为负载而非归属胜出」。
 	Candidates []CandidateScore
 	CreatedAt  time.Time
 }
 
-// CandidateScore 记录单个候选人的评分明细。
+// CandidateScore 记录单个候选人的评分明细，对应 Stage 1 的五特征。
 // 保留分项分数是为了让「为什么选了他」可被逐步复核，而不是只给一个总分。
 type CandidateScore struct {
-	EmployeeID   int64
-	Name         string
-	SkillScore   float64
-	LoadScore    float64
-	RecencyScore float64
-	Total        float64
-	Filtered     bool
-	FilterReason string
+	EmployeeID     int64
+	Name           string
+	OwnScore       float64 // 归属命中：该候选人是否负责此服务
+	SimScore       float64 // 相似历史工单：谁处理过同类问题
+	AvailScore     float64 // 可用性：剩余并发容量
+	SeniorityScore float64 // 级别：P0 硬约束之后的软加权
+	RecentScore    float64 // 近期表现
+	Total          float64
+	Filtered       bool
+	FilterReason   string
 }
 
 // Active 表示该候选人是否通过了候选过滤。

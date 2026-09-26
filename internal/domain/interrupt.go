@@ -47,7 +47,24 @@ const (
 	// 而用户这时要登记的往往是另一件事（或同一件事的新进展），
 	// 直接拿旧 Payload 建单会建错单，同时把新诉求丢掉。
 	DecisionHasNewDemand ConfirmationDecision = "has_new_demand"
+	// DecisionForceCommit 表示用户主动要求"别问了，直接建单"。
+	//
+	// 它是建单交互"永远可达的建单出口"（TICKET_INTAKE §5）：追问再合理，
+	// 也不能把不耐烦的用户挡在建单之外——真实客服最贵的失败是用户跑了、
+	// 单还没建。命中即用当前待确认草案立即建单，并在 MissingInfo 记 user_forced_commit。
+	//
+	// 与 DecisionConfirm 一样带副作用，因此纳入 GrantsApproval 不变式。
+	DecisionForceCommit ConfirmationDecision = "force_commit"
 )
+
+// GrantsApproval 报告该判定是否授权触达建单（写操作）。
+//
+// 一条口径不变式：只有 DecisionConfirm 与 DecisionForceCommit 能建单，
+// 其余判定都不得等同于"用户批准了这份草案"。新增枚举值必须显式回答这个问题，
+// 由 TestGrantsApprovalInvariant 守住。
+func (d ConfirmationDecision) GrantsApproval() bool {
+	return d == DecisionConfirm || d == DecisionForceCommit
+}
 
 // 确认与取消关键词。
 //
@@ -86,20 +103,38 @@ var newDemandPhrases = []string{
 	"建个单", "建工单", "建个工单", "提个工单", "帮我建", "帮我登记",
 }
 
+// forceCommitPhrases 用户主动要求立即建单、跳过追问的表达。
+//
+// 两条刻意的取舍：
+//   - 不含「就这样」「行了就这样」。它们语义偏"弱确认"，且既有的确认用例
+//     （"OK 就这样""嗯，确认，就这样"）已锁定其判为 confirm；若收进 forceCommit
+//     会把这些用例改判，破坏既有解析。留给 confirm，forceCommit 只收明确祈使句。
+//   - 不含「不用再问」。它与取消词「不用」前缀相同，而取消排在 forceCommit 之前，
+//     收进来也永远命中不到，反而误导；用"别问了"表达"停止追问"这一意图。
+//   - 不含泛化的「建」「提交」单字。与 newDemand 同理，单字命中大量无关表述。
+//
+// 与 cancel 的相对位置见 ParseConfirmationDecision 注释：取消优先，
+// 因为 forceCommit 和 confirm 一样带建单副作用，犹豫时取无副作用解释。
+var forceCommitPhrases = []string{
+	"直接建单", "直接建", "先建单", "直接提交", "提交吧", "别问了",
+}
+
 // ParseConfirmationDecision 解析用户的确认答复。
 //
-// 判定阶梯：新建单诉求 → 取消 → 确认 → 语义不明。
+// 判定阶梯：新建单诉求 → 取消 → 主动建单 → 确认 → 语义不明。
 //
 //   - 新建单诉求排最前：这句话要登记的事与上一轮定下的草案不一定是同一件，
 //     交给带上下文的模型判断，比用词表替它决定更接近真实语义。
 //     它本身不产生任何副作用，因此放在最前不会带来风险。
-//   - 取消优先于确认：理由仍是风险不对称——误判为确认会真的建单，
-//     误判为取消只是让用户重说一次。故对犹豫表述（"不用了，确认吧"）
-//     一律取保守解释。
+//   - 取消排在两个会建单的判定（forceCommit / confirm）之前：理由仍是风险不对称——
+//     误判为建单会真的建单，误判为取消只是让用户重说一次。故对犹豫表述
+//     （"算了，就这样吧"）一律取无副作用的取消解释。
+//   - 主动建单次之：用户明确说"别问了/直接建单"时，即便草案信息不全也要建，
+//     这是"永远可达的建单出口"，不能被追问卡住。
 //   - 确认必须未被否决短语命中（见 nonApprovalPhrases）。
 //
-// 除 DecisionConfirm 外没有任何判定能触达建单，
-// 这条不变式由 TestOnlyConfirmGrantsApproval 与编排层共同守住。
+// 只有 GrantsApproval() 为真的判定（confirm / forceCommit）能触达建单，
+// 这条不变式由 TestGrantsApprovalInvariant 与编排层共同守住。
 //
 // 两侧都未命中时返回 unknown，由编排层带上下文澄清，而不是猜测。
 func ParseConfirmationDecision(text string) ConfirmationDecision {
@@ -112,6 +147,9 @@ func ParseConfirmationDecision(text string) ConfirmationDecision {
 	}
 	if matchesAnyKeyword(value, cancelWords) {
 		return DecisionCancel
+	}
+	if matchesAnyKeyword(value, forceCommitPhrases) {
+		return DecisionForceCommit
 	}
 	if matchesAnyKeyword(value, confirmWords) && !matchesAnyKeyword(value, nonApprovalPhrases) {
 		return DecisionConfirm

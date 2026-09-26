@@ -1,6 +1,7 @@
 package conversation
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -28,7 +29,7 @@ func newService(t *testing.T, executor TurnExecutor) (*Service, store.Store) {
 
 // echoExecutor 把客户消息原样回显，便于断言回复落库位置。
 func echoExecutor() TurnExecutor {
-	return TurnExecutorFunc(func(_ int64, message string) (TurnOutcome, error) {
+	return TurnExecutorFunc(func(_ context.Context, _ int64, message string) (TurnOutcome, error) {
 		return TurnOutcome{Reply: "回复：" + message}, nil
 	})
 }
@@ -74,7 +75,7 @@ func TestSendStoresCustomerMessageAndReplyInOrder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("创建会话失败: %v", err)
 	}
-	result, err := svc.Send(conv.ID, "接口返回 401", "req-1")
+	result, err := svc.Send(context.Background(), conv.ID, "接口返回 401", "req-1")
 	if err != nil {
 		t.Fatalf("发送失败: %v", err)
 	}
@@ -108,7 +109,7 @@ func TestSendReturnsPopulatedTimestamps(t *testing.T) {
 	svc, _ := newService(t, echoExecutor())
 
 	conv, _ := svc.Start(StartInput{})
-	result, err := svc.Send(conv.ID, "接口报错", "req-ts")
+	result, err := svc.Send(context.Background(), conv.ID, "接口报错", "req-ts")
 	if err != nil {
 		t.Fatalf("发送失败: %v", err)
 	}
@@ -140,10 +141,10 @@ func TestSendIsIdempotentByRequestID(t *testing.T) {
 	svc, st := newService(t, echoExecutor())
 
 	conv, _ := svc.Start(StartInput{})
-	if _, err := svc.Send(conv.ID, "接口报错", "req-dup"); err != nil {
+	if _, err := svc.Send(context.Background(), conv.ID, "接口报错", "req-dup"); err != nil {
 		t.Fatalf("首次发送失败: %v", err)
 	}
-	second, err := svc.Send(conv.ID, "接口报错", "req-dup")
+	second, err := svc.Send(context.Background(), conv.ID, "接口报错", "req-dup")
 	if err != nil {
 		t.Fatalf("重复发送不应返回错误: %v", err)
 	}
@@ -164,10 +165,10 @@ func TestSendDifferentRequestIDCreatesNewMessages(t *testing.T) {
 	svc, st := newService(t, echoExecutor())
 
 	conv, _ := svc.Start(StartInput{})
-	if _, err := svc.Send(conv.ID, "第一个问题", "req-1"); err != nil {
+	if _, err := svc.Send(context.Background(), conv.ID, "第一个问题", "req-1"); err != nil {
 		t.Fatalf("发送失败: %v", err)
 	}
-	if _, err := svc.Send(conv.ID, "第二个问题", "req-2"); err != nil {
+	if _, err := svc.Send(context.Background(), conv.ID, "第二个问题", "req-2"); err != nil {
 		t.Fatalf("发送失败: %v", err)
 	}
 	if messages := st.MessagesByConversation(conv.ID); len(messages) != 4 {
@@ -185,7 +186,7 @@ func TestSendRejectsClosedConversation(t *testing.T) {
 
 	// 已关闭会话不得再接受消息：否则新问题会挂在旧会话上，
 	// 导致「同会话未关闭工单」的去重判断误伤。
-	_, err := svc.Send(conv.ID, "还有问题", "req-3")
+	_, err := svc.Send(context.Background(), conv.ID, "还有问题", "req-3")
 	if !errors.Is(err, domain.ErrConversationClosed) {
 		t.Fatalf("应返回 ErrConversationClosed，实际 %v", err)
 	}
@@ -193,7 +194,7 @@ func TestSendRejectsClosedConversation(t *testing.T) {
 
 func TestSendRejectsUnknownConversation(t *testing.T) {
 	svc, _ := newService(t, echoExecutor())
-	if _, err := svc.Send(999, "你好", "req-x"); err == nil {
+	if _, err := svc.Send(context.Background(), 999, "你好", "req-x"); err == nil {
 		t.Fatal("不存在的会话应报错")
 	}
 }
@@ -201,7 +202,7 @@ func TestSendRejectsUnknownConversation(t *testing.T) {
 func TestSendRejectsEmptyContent(t *testing.T) {
 	svc, _ := newService(t, echoExecutor())
 	conv, _ := svc.Start(StartInput{})
-	if _, err := svc.Send(conv.ID, "   ", "req-y"); err == nil {
+	if _, err := svc.Send(context.Background(), conv.ID, "   ", "req-y"); err == nil {
 		t.Fatal("空消息应被拒绝")
 	}
 }
@@ -211,7 +212,7 @@ func TestSendWithoutExecutorOnlyStoresMessage(t *testing.T) {
 	svc, st := newService(t, nil)
 
 	conv, _ := svc.Start(StartInput{})
-	result, err := svc.Send(conv.ID, "历史消息", "req-hist")
+	result, err := svc.Send(context.Background(), conv.ID, "历史消息", "req-hist")
 	if err != nil {
 		t.Fatalf("发送失败: %v", err)
 	}
@@ -226,13 +227,13 @@ func TestSendWithoutExecutorOnlyStoresMessage(t *testing.T) {
 func TestSendKeepsCustomerMessageWhenExecutorFails(t *testing.T) {
 	// AI 失败不得丢失客户消息：消息已落库，错误向上报，
 	// 由调用方决定是否转人工，而不是把整条消息回滚掉。
-	failing := TurnExecutorFunc(func(int64, string) (TurnOutcome, error) {
+	failing := TurnExecutorFunc(func(context.Context, int64, string) (TurnOutcome, error) {
 		return TurnOutcome{}, errors.New("模型不可用")
 	})
 	svc, st := newService(t, failing)
 
 	conv, _ := svc.Start(StartInput{})
-	_, err := svc.Send(conv.ID, "接口报错", "req-fail")
+	_, err := svc.Send(context.Background(), conv.ID, "接口报错", "req-fail")
 	if err == nil {
 		t.Fatal("执行器失败应向上返回错误")
 	}
@@ -252,7 +253,7 @@ func TestSendUpdatesDefaultTitleFromFirstMessage(t *testing.T) {
 	if conv.Title != "新的咨询" {
 		t.Fatalf("初始标题应为默认值，实际 %q", conv.Title)
 	}
-	if _, err := svc.Send(conv.ID, "核心接口持续返回 500 错误", "req-title"); err != nil {
+	if _, err := svc.Send(context.Background(), conv.ID, "核心接口持续返回 500 错误", "req-title"); err != nil {
 		t.Fatalf("发送失败: %v", err)
 	}
 
@@ -270,7 +271,7 @@ func TestSendKeepsExplicitTitle(t *testing.T) {
 	svc, st := newService(t, echoExecutor())
 
 	conv, _ := svc.Start(StartInput{Title: "人工指定的标题"})
-	if _, err := svc.Send(conv.ID, "消息内容", "req-t2"); err != nil {
+	if _, err := svc.Send(context.Background(), conv.ID, "消息内容", "req-t2"); err != nil {
 		t.Fatalf("发送失败: %v", err)
 	}
 	updated, _ := st.GetConversation(conv.ID)
@@ -316,7 +317,7 @@ func TestGetReturnsMessagesInOrder(t *testing.T) {
 	conv, _ := svc.Start(StartInput{})
 
 	for i, text := range []string{"问题一", "问题二", "问题三"} {
-		if _, err := svc.Send(conv.ID, text, "req-"+string(rune('a'+i))); err != nil {
+		if _, err := svc.Send(context.Background(), conv.ID, text, "req-"+string(rune('a'+i))); err != nil {
 			t.Fatalf("发送失败: %v", err)
 		}
 	}
@@ -337,13 +338,13 @@ func TestGetReturnsMessagesInOrder(t *testing.T) {
 func TestTurnOutcomeIsPropagated(t *testing.T) {
 	// 中断与建单结果必须从 Agent 传到调用方，
 	// 否则 HTTP 层无法告知客户端「正在等待确认」。
-	executor := TurnExecutorFunc(func(int64, string) (TurnOutcome, error) {
+	executor := TurnExecutorFunc(func(context.Context, int64, string) (TurnOutcome, error) {
 		return TurnOutcome{Reply: "请确认", Interrupted: true, TicketID: 42}, nil
 	})
 	svc, _ := newService(t, executor)
 
 	conv, _ := svc.Start(StartInput{})
-	result, err := svc.Send(conv.ID, "建个工单", "req-turn")
+	result, err := svc.Send(context.Background(), conv.ID, "建个工单", "req-turn")
 	if err != nil {
 		t.Fatalf("发送失败: %v", err)
 	}

@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mac/helpdesk-agent/internal/domain"
@@ -67,7 +68,7 @@ type Config struct {
 func DefaultConfig() Config {
 	return Config{
 		Policy:              tooling.DefaultPolicy(),
-		MaxToolRounds:       5,
+		MaxToolRounds:       10,
 		ConfirmTTL:          2 * time.Hour,
 		HistoryMaxMessages:  6,
 		HistoryMaxItemRunes: 220,
@@ -113,6 +114,28 @@ type Agent struct {
 	// 省掉整轮的工具目录与证据成本。
 	// 为空时行为与无路由版本一致（全部走完整链路）。
 	classifier IntentClassifier
+
+	// traceability 为可选的可追溯性判定器，启用建单交互（追问 + 忠实度标注）。
+	//
+	// 为 nil（默认）时建单链路与一期上线时完全一致：模型说建就建，不做槽位
+	// 可追溯性门、也不标注描述忠实度。只有显式注入才启用，保证既有评测/测试零改动。
+	traceability TraceabilityChecker
+	// confirmationJudge 为可选的确认判定器（LLM 主判，见 confirmation.go）。
+	// 为 nil 时确认判定回退 domain.ParseConfirmationDecision 关键词阶梯，行为与既有版本一致。
+	confirmationJudge ConfirmationJudge
+	// observer 为可选的回合事件观察者：把「第几轮 / 调了哪个工具 / 结果如何」实时外显，
+	// 减少用户对 agent 内部流程的未知性。为 nil 时不产生任何额外开销。
+	observer EventObserver
+	// intakeMaxRounds 是单会话追问的安全阀上限（防 bug，非业务规则）。
+	intakeMaxRounds int
+	// intakeGating 为 true 时才做"缺可追溯证据 → 追问而非直接建单"的门控。
+	intakeGating bool
+
+	// intakeMu 保护 intakeStates。
+	intakeMu sync.Mutex
+	// intakeStates 按会话记录追问进度。一期仅内存持久化（与 store 现状一致），
+	// 建单成功后清除；重启后从"没追问过"重来是一期已知且可接受的边界。
+	intakeStates map[int64]domain.IntakeProgress
 }
 
 // IntentClassifier 判定用户消息意图。
@@ -144,6 +167,29 @@ func WithClassifier(classifier IntentClassifier) Option {
 	return func(a *Agent) { a.classifier = classifier }
 }
 
+// IntakeConfig 配置建单交互（可追溯性判定 + 进展驱动追问）。
+type IntakeConfig struct {
+	// Checker 为 nil 表示不启用建单交互——建单链路保持一期原样。
+	Checker TraceabilityChecker
+	// MaxAskRounds 为安全阀上限；<=0 时取 DefaultIntakeMaxAskRounds。
+	MaxAskRounds int
+	// Gating 为 true 时，缺可追溯证据的阻塞槽位会触发追问而非直接建单。
+	// 为 false 时只做事后忠实度标注，不改变"信息不全也建单"的旧行为。
+	Gating bool
+}
+
+// WithIntake 启用建单交互。见 IntakeConfig。
+func WithIntake(cfg IntakeConfig) Option {
+	return func(a *Agent) {
+		a.traceability = cfg.Checker
+		a.intakeMaxRounds = cfg.MaxAskRounds
+		if a.intakeMaxRounds <= 0 {
+			a.intakeMaxRounds = DefaultIntakeMaxAskRounds
+		}
+		a.intakeGating = cfg.Checker != nil && cfg.Gating
+	}
+}
+
 // New 构造 Agent。
 func New(model llm.ChatModel, st store.Store, retriever *rag.Retriever, tickets *ticket.Service, config Config, opts ...Option) (*Agent, error) {
 	if model == nil {
@@ -157,12 +203,14 @@ func New(model llm.ChatModel, st store.Store, retriever *rag.Retriever, tickets 
 	}
 
 	a := &Agent{
-		model:     model,
-		retriever: retriever,
-		tickets:   tickets,
-		store:     st,
-		config:    config.normalize(),
-		now:       time.Now,
+		model:           model,
+		retriever:       retriever,
+		tickets:         tickets,
+		store:           st,
+		config:          config.normalize(),
+		now:             time.Now,
+		intakeMaxRounds: DefaultIntakeMaxAskRounds,
+		intakeStates:    make(map[int64]domain.IntakeProgress),
 	}
 	for _, opt := range opts {
 		opt(a)
@@ -198,6 +246,45 @@ func (a *Agent) allowedTools() []string {
 type TurnInput struct {
 	ConversationID int64
 	UserMessage    string
+	// Stream 为可选的回复文本流式回调：模型产生最终回复文本时逐段调用。
+	// 为 nil 时退化为非流式（整段返回后由调用方一次性处理）。
+	// 只承载最终回复文本；中间轮次的模型前言若存在也会流式外发。
+	Stream func(delta string)
+}
+
+// TurnEvent 回合内的一次可观测事件，供交互窗口实时外显 agent 内部流程。
+//
+// Kind 取值：
+//   - "round"   第 Round 轮开始（正在请求模型，模型调用是回合内最耗时的黑洞）
+//   - "tool"    一个工具执行完毕，Tool/Status 标明是哪个工具、什么结果
+//   - "confirm" 确认判定完成，Detail 为判定结论（confirm/cancel/...）
+type TurnEvent struct {
+	Kind   string `json:"kind"`
+	Round  int    `json:"round"`
+	Tool   string `json:"tool"`
+	Status string `json:"status"`
+	Detail string `json:"detail"`
+}
+
+// EventObserver 回合事件观察者。实现应尽快返回、不阻塞主流程，
+// 只做展示或追加日志，不应参与业务决策。
+type EventObserver func(TurnEvent)
+
+// WithEventObserver 注入回合事件观察者（如交互窗口的实时进度打印）。
+func WithEventObserver(observer EventObserver) Option {
+	return func(a *Agent) { a.observer = observer }
+}
+
+// emit 派发回合事件：优先构造时注入的 observer（chat.go），其次 ctx 注入的
+// StreamSink（SSE）。两者都没有时零开销。
+func (a *Agent) emit(ctx context.Context, e TurnEvent) {
+	if a.observer != nil {
+		a.observer(e)
+		return
+	}
+	if sink := streamSinkFrom(ctx); sink != nil && sink.OnEvent != nil {
+		sink.OnEvent(e)
+	}
 }
 
 // ToolCallRecord 一次工具调用的审计记录。
@@ -321,6 +408,38 @@ func (a *Agent) Run(ctx context.Context, input TurnInput) (*TurnResult, error) {
 	return a.runToolLoop(ctx, input, messages, startedAt, result)
 }
 
+// callChat 无工具补全，模型支持流式时逐段外发文本。
+func (a *Agent) callChat(ctx context.Context, system, user string, onDelta func(string)) (*llm.Response, error) {
+	if s, ok := a.model.(llm.StreamingChatModel); ok {
+		return s.ChatStream(ctx, system, user, onDelta)
+	}
+	resp, err := a.model.Chat(ctx, system, user)
+	if err != nil {
+		return nil, err
+	}
+	if resp.Content != "" && onDelta != nil {
+		onDelta(resp.Content)
+	}
+	return resp, nil
+}
+
+// callChatWithTools 带工具补全，模型支持流式时逐段外发文本。
+//
+// 非流式回退时把整段内容一次性交给 onDelta，使调用方感知不到两种路径的差异。
+func (a *Agent) callChatWithTools(ctx context.Context, req llm.ToolRequest, onDelta func(string)) (*llm.Response, error) {
+	if s, ok := a.model.(llm.StreamingChatModel); ok {
+		return s.ChatWithToolsStream(ctx, req, onDelta)
+	}
+	resp, err := a.model.ChatWithTools(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	if resp.Content != "" && onDelta != nil {
+		onDelta(resp.Content)
+	}
+	return resp, nil
+}
+
 // runToolLoop 模型决策循环：调用模型 → 执行工具 → 回灌观察 → 再次决策。
 //
 // 收 messages 而非自己构造：确认澄清回合需要在消息里预置未决草案的说明，
@@ -331,14 +450,17 @@ func (a *Agent) runToolLoop(ctx context.Context, input TurnInput, messages []llm
 	counts := make(map[string]int)
 	total := 0
 
+	onDelta := a.streamDelta(ctx, input)
+
 	for round := 0; round < a.config.MaxToolRounds; round++ {
 		result.Rounds = round + 1
+		a.emit(ctx, TurnEvent{Kind: "round", Round: round + 1, Detail: "正在请求模型决策"})
 
-		response, err := a.model.ChatWithTools(ctx, llm.ToolRequest{
+		response, err := a.callChatWithTools(ctx, llm.ToolRequest{
 			System:   a.systemPrompt(),
 			Messages: messages,
 			Tools:    schemas,
-		})
+		}, onDelta)
 		if err != nil {
 			return nil, fmt.Errorf("模型调用失败: %w", err)
 		}
@@ -374,6 +496,7 @@ func (a *Agent) runToolLoop(ctx context.Context, input TurnInput, messages []llm
 			record, observation, interrupt := a.executeTool(ctx, input, call, counts, total)
 			result.ToolCalls = append(result.ToolCalls, record)
 			roundRecord.Tools = append(roundRecord.Tools, record.Code)
+			a.emit(ctx, TurnEvent{Kind: "tool", Round: round + 1, Tool: record.Code, Status: record.Status, Detail: toolEventDetail(record)})
 
 			if interrupt != nil {
 				// 写操作需要确认：发起中断并短路返回，等用户下一条消息。
@@ -406,6 +529,20 @@ func (a *Agent) runToolLoop(ctx context.Context, input TurnInput, messages []llm
 	result.Reply = "抱歉，我处理这个问题时步骤过多，已转由人工继续跟进。"
 	a.finish(result, input, startedAt)
 	return result, nil
+}
+
+// toolEventDetail 取工具事件里值得外显的原因文本。
+//
+// 只有"未完成"且"有解释价值"的状态才填：failed（拒绝/失败原因）与
+// awaiting_user_info（追问原因）。完成的观察结果（检索内容）太长，且会体现在
+// 后续回复里，不在工具事件行重复。
+func toolEventDetail(record ToolCallRecord) string {
+	switch record.Status {
+	case "failed", "awaiting_user_info":
+		return record.Result
+	default:
+		return ""
+	}
 }
 
 // elapsedMS 同时返回毫秒与微秒耗时。
@@ -472,8 +609,24 @@ func (a *Agent) executeTool(ctx context.Context, input TurnInput, call llm.ToolC
 
 	handlerCtx := tooling.HandlerContext{Ctx: ctx, ConversationID: input.ConversationID}
 	if def.RequireConfirmation {
+		// 建单交互前置钩子（仅在建单确认工具、且注入了判定器时生效）。
+		// 默认 traceability 为 nil → 整段跳过，写操作链路与一期完全一致。
+		var gate *intakeGate
+		if a.traceability != nil && call.Name == ToolCreateConfirm {
+			g := a.evaluateIntake(ctx, input.ConversationID, args)
+			if g.ask {
+				// 缺可追溯证据的阻塞槽位：本轮先向用户追问，不建草案。
+				// 把"还缺哪些"作为观察回灌给模型，由它生成一句自然的问句收尾，
+				// 不改有界循环本体——这正是把"追问"接进既有工具循环的最小接缝。
+				record.Status = "awaiting_user_info"
+				record.Result = clarifyObservation(g.askSlots)
+				record.DurationMS, record.DurationUS = elapsedMS(a.now(), startedAt)
+				return record, record.Result, nil
+			}
+			gate = &g
+		}
 		// 写操作：先落确认中断，工具本身不执行。
-		interrupt, err := a.createInterrupt(input, def, args)
+		interrupt, err := a.createInterrupt(input, def, args, gate)
 		if err != nil {
 			record.ErrorKind = tooling.KindExecFailed
 			record.Result = err.Error()
@@ -541,8 +694,13 @@ func (a *Agent) resume(ctx context.Context, pending domain.Interrupt, input Turn
 		}, nil
 	}
 
-	decision := domain.ParseConfirmationDecision(input.UserMessage)
+	// LLM 主判（2026-09-25）：带草案与用户原话上下文判定表态；
+	// 未注入 judge 或调用失败时 judgeConfirmation 内部回退关键词阶梯。
+	decision, judgeUsage := a.judgeConfirmation(ctx, pending, input)
 	result.Decision = decision
+	result.Usage.PromptTokens += judgeUsage.PromptTokens
+	result.Usage.CompletionTokens += judgeUsage.CompletionTokens
+	a.emit(ctx, TurnEvent{Kind: "confirm", Detail: string(decision)})
 
 	switch decision {
 	case domain.DecisionCancel:
@@ -555,8 +713,13 @@ func (a *Agent) resume(ctx context.Context, pending domain.Interrupt, input Turn
 		a.finish(result, input, startedAt)
 		return resumeOutcome{Result: result, Handled: true}, nil
 
-	case domain.DecisionConfirm:
-		created, err := a.tickets.Create(pending.Payload)
+	case domain.DecisionConfirm, domain.DecisionForceCommit:
+		if decision == domain.DecisionForceCommit {
+			// 用户主动要求"别问了直接建"：尊重其决定，但把这份自主略过追问
+			// 的痕迹留在工单上，处理人能看到信息是用户自己选择没补全的。
+			pending.Payload.MissingInfo = append(pending.Payload.MissingInfo, missingUserForcedCommit)
+		}
+		created, err := a.tickets.Create(ctx, pending.Payload)
 		pending.ResumeCount++
 		if err != nil {
 			// 执行失败：保留 pending 让用户可以重试，而不是静默丢弃建单意图。
@@ -572,6 +735,8 @@ func (a *Agent) resume(ctx context.Context, pending domain.Interrupt, input Turn
 		if _, err := a.store.SaveInterrupt(pending); err != nil {
 			return resumeOutcome{}, err
 		}
+		// 建单成功即收尾：清空该会话的追问进度，否则下一件事会继承旧的"已问过"记录。
+		a.clearIntakeState(input.ConversationID)
 
 		result.TicketID = created.Ticket.ID
 		result.ToolCalls = append(result.ToolCalls, ToolCallRecord{
@@ -612,10 +777,10 @@ func (a *Agent) ticketCreatedReply(created ticket.CreateResult) string {
 		}
 		switch created.Assignment.Outcome {
 		case domain.OutcomeMatched:
-			fmt.Fprintf(&b, "已按技能匹配指派给 %s。", name)
+			fmt.Fprintf(&b, "已指派给 %s。", name)
 		case domain.OutcomeFallbackPool:
-			// 如实说明未匹配到专长人员，而不是含糊其辞地声称"已指派"。
-			fmt.Fprintf(&b, "暂未匹配到专长对口的处理人，已进入待认领池（建议 %s）。", name)
+			// 如实说明没定到对口负责人，而不是含糊其辞地声称"已指派"。
+			fmt.Fprintf(&b, "暂未确定对口负责人，已进入待认领池（建议 %s）。", name)
 		}
 	} else {
 		b.WriteString("暂无可用处理人，已进入待认领池。")
@@ -628,8 +793,11 @@ func (a *Agent) ticketCreatedReply(created ticket.CreateResult) string {
 }
 
 // createInterrupt 为写操作创建确认中断。
-func (a *Agent) createInterrupt(input TurnInput, def tooling.Definition, args map[string]any) (*domain.Interrupt, error) {
-	payload, prompt, err := a.buildTicketPayload(input.ConversationID, args)
+//
+// gate 为建单交互的前置判定结果（可追溯性 / 追问进度）；未启用建单交互时为 nil，
+// 此时行为与一期完全一致。
+func (a *Agent) createInterrupt(input TurnInput, def tooling.Definition, args map[string]any, gate *intakeGate) (*domain.Interrupt, error) {
+	payload, prompt, err := a.buildTicketPayload(input.ConversationID, args, gate)
 	if err != nil {
 		return nil, err
 	}
@@ -660,7 +828,10 @@ func (a *Agent) createInterrupt(input TurnInput, def tooling.Definition, args ma
 }
 
 // buildTicketPayload 由工具参数构造建单输入与确认文案。
-func (a *Agent) buildTicketPayload(conversationID int64, args map[string]any) (domain.TicketInput, string, error) {
+//
+// gate 非空时把建单交互的标注并入 MissingInfo，并在确认文案里列出追溯不到的
+// 描述声明（只提示核对、不拦单，见 TICKET_INTAKE §3.3）。
+func (a *Agent) buildTicketPayload(conversationID int64, args map[string]any, gate *intakeGate) (domain.TicketInput, string, error) {
 	title := tooling.StringArg(args, "title")
 	if title == "" {
 		return domain.TicketInput{}, "", errors.New("工单标题不能为空")
@@ -676,16 +847,23 @@ func (a *Agent) buildTicketPayload(conversationID int64, args map[string]any) (d
 		priority = domain.PriorityP3
 	}
 	missing := tooling.StringSliceArg(args, "missingInfo")
+	var untraced []string
+	var progress domain.IntakeProgress
+	if gate != nil {
+		missing = appendMissingNotes(missing, gate.notes)
+		untraced = gate.untracedDescs
+		progress = gate.progress
+	}
 
 	payload := domain.TicketInput{
 		Title:          title,
 		Description:    description,
 		Category:       category,
 		Priority:       priority,
-		RequiredSkill:  a.deriveRequiredSkills(args, category),
 		ConversationID: conversationID,
 		SourceChannel:  "web",
 		MissingInfo:    missing,
+		Intake:         progress,
 	}
 
 	var b strings.Builder
@@ -695,6 +873,13 @@ func (a *Agent) buildTicketPayload(conversationID int64, args map[string]any) (d
 		fmt.Fprintf(&b, "描述：%s\n", description)
 	}
 	fmt.Fprintf(&b, "类型：%s　优先级：%s\n", category, priority)
+	if len(untraced) > 0 {
+		// 忠实度提示：把"用户原话里没有、我仍写进描述"的声明显式列出请其核对，
+		// 但照常建单——拦单会把判定的假阳变成丢单。
+		b.WriteString("以下几处我在您的描述里没直接看到，请核对是否属实：")
+		b.WriteString(strings.Join(untraced, "；"))
+		b.WriteString("\n")
+	}
 	if len(missing) > 0 {
 		fmt.Fprintf(&b, "（尚缺信息：%s）\n", strings.Join(missing, "、"))
 	}
@@ -702,59 +887,26 @@ func (a *Agent) buildTicketPayload(conversationID int64, args map[string]any) (d
 	return payload, b.String(), nil
 }
 
-// deriveRequiredSkills 推导工单的技能需求。
-//
-// 优先采信模型给出的 skillIds；为空时退化为按分类的兜底技能集合，
-// 保证工单至少能进入候选匹配，而不是因缺少技能需求被直接判为兜底。
-func (a *Agent) deriveRequiredSkills(args map[string]any, category domain.Category) domain.SkillSet {
-	if ids := int64SliceArg(args, "skillIds"); len(ids) > 0 {
-		return domain.NewSkillSet(ids...)
+// appendMissingNotes 去重地把建单交互标注追加进 MissingInfo，保留既有项顺序。
+func appendMissingNotes(missing, notes []string) []string {
+	if len(notes) == 0 {
+		return missing
 	}
-	return fallbackSkillsForCategory(category)
-}
-
-// fallbackSkillsForCategory 按分类给出兜底技能。
-//
-// 这只是保底策略：真实部署应由知识运营维护分类到技能的映射表，
-// 而不是把映射硬编码在代码里。此处内联是为了让一期可独立跑通。
-func fallbackSkillsForCategory(category domain.Category) domain.SkillSet {
-	switch category {
-	case domain.CategoryIncident:
-		return domain.NewSkillSet(2, 3) // 接口 / 数据库
-	case domain.CategoryConsultation:
-		return domain.NewSkillSet(8, 1) // 部署 / 网络
-	case domain.CategoryRequest:
-		return domain.NewSkillSet(9) // 账号权限
-	case domain.CategoryChange:
-		return domain.NewSkillSet(8) // 部署
-	default:
-		return domain.NewSkillSet(2)
-	}
-}
-
-func int64SliceArg(args map[string]any, key string) []int64 {
-	value, ok := args[key]
-	if !ok {
-		return nil
-	}
-	raw, ok := value.([]any)
-	if !ok {
-		return nil
-	}
-	ret := make([]int64, 0, len(raw))
-	for _, item := range raw {
-		switch number := item.(type) {
-		case float64:
-			if number > 0 {
-				ret = append(ret, int64(number))
-			}
-		case int64:
-			if number > 0 {
-				ret = append(ret, number)
-			}
+	seen := make(map[string]bool, len(missing)+len(notes))
+	out := make([]string, 0, len(missing)+len(notes))
+	for _, item := range missing {
+		if !seen[item] {
+			seen[item] = true
+			out = append(out, item)
 		}
 	}
-	return ret
+	for _, note := range notes {
+		if !seen[note] {
+			seen[note] = true
+			out = append(out, note)
+		}
+	}
+	return out
 }
 
 // policyWithAllowList 返回带本 Agent 白名单的策略。
