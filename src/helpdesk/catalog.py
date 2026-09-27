@@ -1,5 +1,8 @@
 """业务事实：员工名册、服务字典、知识语料。
 
+已结历史工单不在这里，在 `history.py`（它是证据源，不是目录的派生物）。
+名册 24 人：新增的 15 人**都不持有服务归属** —— 持有归属的只有 8 人（owner 侧 101–107，backup 侧多一个 108）。
+
 派单只剩两层，所以这里只需要"运营定的事实"，不需要任何打分权重：
 服务归属（owner/backup）是喂给模型的上下文，不是金标来源，也不是特征。
 """
@@ -43,6 +46,11 @@ class Employee:
     @property
     def has_capacity(self) -> bool:
         return self.current_load < self.max_concurrent
+
+    @property
+    def searchable_text(self) -> str:
+        """能力画像才是召回信号，姓名不是 —— 所以正文用画像，团队/级别作后缀。"""
+        return f"{self.profile}（{team_name(self.team_id)}／{self.level.value}）"
 
 
 @dataclass(frozen=True)
@@ -163,60 +171,100 @@ SERVICES: tuple[Service, ...] = (
     ),
 )
 
-_PROFILE: dict[int, tuple[str, Level, bool, int, float]] = {
-    # id: (name, level, active, max_concurrent, recency)
-    101: ("张伟（接口组）", Level.SENIOR, True, 5, 0.85),
-    102: ("王强（数据库组）", Level.SENIOR, True, 4, 0.80),
-    103: ("陈磊（运维组）", Level.MID, True, 6, 0.75),
-    104: ("袁泉（安全组）", Level.SENIOR, True, 3, 0.70),
-    105: ("钱枫（前端组）", Level.MID, True, 4, 0.78),
-    106: ("周涛（权限计费组）", Level.MID, True, 4, 0.72),
-    107: ("黄磊（全栈通才）", Level.SENIOR, True, 8, 0.60),
-    108: ("李娜（实习坐席）", Level.JUNIOR, True, 10, 0.95),
-    109: ("郑爽（已离职）", Level.SENIOR, False, 5, 0.90),
-}
+@dataclass(frozen=True)
+class RosterRecord:
+    id: int
+    name: str
+    team_id: int
+    level: Level
+    active: bool
+    current_load: int
+    max_concurrent: int
+    recency: float
+    profile: str
 
-_PROSE: dict[int, str] = {
-    101: "接口组骨干，负责对外核心接口，尤其熟悉下单链路和令牌鉴权；"
-    "数据库层能兜底但非首选。历史处理过高并发写导致的下单雪崩类故障。",
-    102: "数据组负责人，数据库调优与慢查询排查经验最丰富；报表与 BI 侧的问题第一时间找他。",
-    103: "运维组主力，负责网络、机房链路与私有化现场部署；硬件类工单基本都走他。",
-    104: "安全组唯一员工，负责漏洞响应与合规；账号鉴权异常时会被拉进来一起看。",
-    105: "前端组骨干，控制台与桌面客户端的疑难杂症归口；权限路由与渲染性能问题最擅长。",
-    106: "权限计费组唯一员工，账号锁定与账单异常是他的日常；跨系统的账号打通问题会拉上安全组。",
-    107: "全栈通才，跨栈救火队员；主战场是内部工具台，也是多个核心服务的备份。",
-    108: "实习坐席，前端类工单 backup。响应快、任务多，但独立处理复杂故障的能力有限。",
-    109: "已离职。保留记录用于测试 active=False 的过滤路径。",
-}
 
-_LOAD: dict[int, int] = {
-    101: 2,
-    102: 3,
-    103: 4,
-    104: 1,
-    105: 2,
-    106: 3,
-    107: 5,
-    108: 6,
-    109: 0,
-}
+#: 名册 24 人 —— v4 的"先召回再选"要有意义，候选数必须只是名册的一个小片子。
+#: 9 人时实测候选 7/9（等于把名册全列出来），召回退化成摆设。
+#: 新增的 15 人**都不持有服务归属**：他们是相邻产能与干扰项，owner/backup 表一个字没改，
+#: 所以层 1 的 45 条金标与指派金标的判定次序都不受影响（会受影响的只有难度，见 RUBRIC）。
+ROSTER: tuple[RosterRecord, ...] = (
+    # --- 原班 9 人：id/姓名/团队/级别/在职/负载/活跃度与原快照一致；
+    #     104、109 两条画像为给新增 15 人让开口径而改写 -----------------------
+    RosterRecord(101, "张伟（接口组）", 1, Level.SENIOR, True, 2, 5, 0.85,
+        "接口组骨干，负责对外核心接口，尤其熟悉下单链路和令牌鉴权；"
+        "数据库层能兜底但非首选。历史处理过高并发写导致的下单雪崩类故障。"),
+    RosterRecord(102, "王强（数据库组）", 2, Level.SENIOR, True, 3, 4, 0.80,
+        "数据组负责人，数据库调优与慢查询排查经验最丰富；报表与 BI 侧的问题第一时间找他。"),
+    RosterRecord(103, "陈磊（运维组）", 4, Level.MID, True, 4, 6, 0.75,
+        "运维组主力，负责网络、机房链路与私有化现场部署；硬件类工单基本都走他。"),
+    RosterRecord(104, "袁泉（安全组）", 6, Level.SENIOR, True, 1, 3, 0.70,
+        "安全组唯一做漏洞响应的人，负责加固与合规；账号鉴权异常时会被拉进来一起看。"),
+    RosterRecord(105, "钱枫（前端组）", 5, Level.MID, True, 2, 4, 0.78,
+        "前端组骨干，控制台与桌面客户端的疑难杂症归口；权限路由与渲染性能问题最擅长。"),
+    RosterRecord(106, "周涛（权限计费组）", 3, Level.MID, True, 3, 4, 0.72,
+        "权限计费组唯一员工，账号锁定与账单异常是他的日常；跨系统的账号打通问题会拉上安全组。"),
+    RosterRecord(107, "黄磊（全栈通才）", 7, Level.SENIOR, True, 5, 8, 0.60,
+        "全栈通才，跨栈救火队员；主战场是内部工具台，也是多个核心服务的备份。"),
+    RosterRecord(108, "李娜（实习坐席）", 8, Level.JUNIOR, True, 6, 10, 0.95,
+        "实习坐席，前端类工单 backup。响应快、任务多，但独立处理复杂故障的能力有限。"),
+    RosterRecord(109, "郑爽（已离职）", 1, Level.SENIOR, False, 0, 5, 0.90,
+        "原接口组资深工程师，负责下单接口与鉴权令牌链路，离职前是这条链路的主值。"
+        "记录保留用于测试 active=False 的过滤路径。"),
+    # --- 接口组 ---------------------------------------------------------------
+    RosterRecord(110, "廖静（接口组）", 1, Level.MID, True, 1, 4, 0.82,
+        "接口组做合作方接入的，签名联调与沙箱环境问题归她；下单主链路的变更要 101 复核后才合。"),
+    RosterRecord(111, "康宁（接口组）", 1, Level.JUNIOR, True, 2, 3, 0.88,
+        "接口组新人，跟着 101 跑下单链路的告警值守，能复现和定位到具体接口，处置方案要人带。"),
+    # --- 数据组 ---------------------------------------------------------------
+    RosterRecord(112, "邵斌（数据组）", 2, Level.MID, True, 2, 4, 0.76,
+        "DBA，连接池参数、慢查询抓取与主从切换的执行都是他做；报表口径和业务指标他不碰。"),
+    RosterRecord(113, "高敏（数据组）", 2, Level.JUNIOR, True, 3, 5, 0.84,
+        "数据分析岗，写临时查询和取数脚本，能看出数据对不上，但没有生产库的变更权限。"),
+    RosterRecord(122, "崔明（数据组）", 2, Level.MID, True, 2, 4, 0.71,
+        "BI 报表开发，看板与月度汇总的模板在他手里；库性能问题要转给数据组主值。"),
+    # --- 权限计费组 -----------------------------------------------------------
+    RosterRecord(114, "唐磊（权限计费组）", 3, Level.MID, True, 1, 4, 0.69,
+        "计费对账二线，发票规则与账务核对熟；账号锁定的处置口不在他这里。"),
+    # --- 运维组 ---------------------------------------------------------------
+    RosterRecord(115, "杜衡（运维组）", 4, Level.SENIOR, True, 3, 5, 0.74,
+        "机房与专线的值班主任，专线割接和跨机房链路要和 103 一起看；应用层问题他不接。"),
+    RosterRecord(116, "宋楠（运维组）", 4, Level.JUNIOR, True, 4, 6, 0.86,
+        "桌面与硬件现场支持，跑门店换打印机和 POS 终端；结单前要 103 复核，独立判断硬件批量故障的能力有限。"),
+    RosterRecord(123, "谭雪（运维组）", 4, Level.MID, True, 2, 4, 0.73,
+        "私有化现场部署驻场，按手册升级与配参数；环境本身的网络与硬件条件归 103 定。"),
+    # --- 前端组 ---------------------------------------------------------------
+    RosterRecord(117, "程雪（前端组）", 5, Level.MID, True, 1, 4, 0.81,
+        "控制台前端开发，白屏与路由渲染问题她见得最多；权限模型和后端接口报错要转出去。"),
+    RosterRecord(118, "冯佳（前端组）", 5, Level.JUNIOR, True, 3, 5, 0.79,
+        "桌面客户端测试转支持，能复现闪退并抓日志；升级链路与签名问题不是她定的。"),
+    # --- 安全组 ---------------------------------------------------------------
+    RosterRecord(119, "石敢（安全组）", 6, Level.MID, True, 1, 3, 0.66,
+        "安全组的合规与审计岗，出审计材料、整理漏洞台账；漏洞响应和加固实施仍走 104。"),
+    # --- 综合组 ---------------------------------------------------------------
+    RosterRecord(120, "贾一雯（综合组）", 7, Level.JUNIOR, True, 5, 8, 0.92,
+        "服务台一线，负责录入、转派与跟进，能判断该找哪个组，但不承担技术处置。"),
+    RosterRecord(121, "白帆（实习组）", 8, Level.JUNIOR, True, 4, 8, 0.90,
+        "实习坐席，只做咨询类的资料整理与回访；故障类和变更类不能给他。"),
+    RosterRecord(124, "韩梅（已离职）", 2, Level.SENIOR, False, 0, 5, 0.87,
+        "原数据组数据库集群负责人，主从与分库分表是她带的头。记录保留用于测试离职陷阱。"),
+)
 
 
 def employees() -> tuple[Employee, ...]:
-    team_of = {101: 1, 102: 2, 103: 4, 104: 6, 105: 5, 106: 3, 107: 7, 108: 8, 109: 1}
     return tuple(
         Employee(
-            id=emp_id,
-            name=name,
-            team_id=team_of[emp_id],
-            level=level,
-            active=active,
-            max_concurrent=max_concurrent,
-            current_load=_LOAD[emp_id],
-            recency=recency,
-            profile=_PROSE[emp_id],
+            id=r.id,
+            name=r.name,
+            team_id=r.team_id,
+            level=r.level,
+            active=r.active,
+            max_concurrent=r.max_concurrent,
+            current_load=r.current_load,
+            recency=r.recency,
+            profile=r.profile,
         )
-        for emp_id, (name, level, active, max_concurrent, recency) in _PROFILE.items()
+        for r in ROSTER
     )
 
 

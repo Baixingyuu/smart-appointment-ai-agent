@@ -9,12 +9,22 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
+from helpdesk.catalog import ROSTER, employees  # noqa: E402
 from helpdesk.dispatch import (  # noqa: E402
+    MAX_EXTRA_CANDIDATES,
     AssignmentDecision,
+    DispatchEvidence,
+    EmployeeCandidate,
+    HistoryCase,
     assignment_prompt,
+    recall_employees,
+    recall_history,
+    render_candidates,
+    render_history,
     render_services,
     to_hit,
 )
+from helpdesk.eval.fakes import FakeIndex, history_hit  # noqa: E402
 from helpdesk.domain import (  # noqa: E402
     Category,
     Draft,
@@ -42,6 +52,10 @@ def make(store: TicketStore, title="下单接口 500", description="线上下单
 
 def decision(assignee="101", rationale="owner 且有余量") -> AssignmentDecision:
     return AssignmentDecision(assignee=assignee, rationale=rationale, confidence=0.8)
+
+
+def _employee(emp_id: int):
+    return next(e for e in employees() if e.id == emp_id)
 
 
 # --- 状态机 -----------------------------------------------------------------
@@ -173,13 +187,92 @@ def test_assignment_json_schema_exposes_the_enum() -> None:
     schema = AssignmentDecision.model_json_schema()
     props = schema["properties"]["assignee"]
     enum = props.get("enum") or props["anyOf"][0]["enum"]
-    assert "ESCALATE_HUMAN" in enum and "101" in enum and len(enum) == 10
+    assert "ESCALATE_HUMAN" in enum and "101" in enum
+    assert len(enum) == len(ROSTER) + 1
+    assert {"109", "124"} <= set(enum), "离职者必须在枚举里，否则在职闸无法观测"
 
 
 def test_prompt_carries_facts_not_predictions() -> None:
     hits = (to_hit(2001, 0.712), to_hit(2012, 0.44))
-    text = assignment_prompt("下单接口 500", hits)
+    candidates = (
+        EmployeeCandidate(_employee(101), 0.66, ("owner@2001", "semantic")),
+        EmployeeCandidate(_employee(109), None, ("semantic",)),
+    )
+    text = assignment_prompt("下单接口 500", hits, candidates)
     assert "owner=101" in text and "无 backup" in text
     assert "109" in text and "已离职（不可派单）" in text
     assert "相似度=0.712" in text
+    assert "召回理由=owner@2001+semantic" in text
     assert render_services(()) == "服务字典检索无命中。"
+
+
+def test_evidence_flags_over_selection_and_citations() -> None:
+    hits = (to_hit(2001, 0.7),)
+    candidates = (
+        EmployeeCandidate(_employee(101), 0.7, ("owner@2001",)),
+        EmployeeCandidate(_employee(107), None, ("backup@2001",)),
+    )
+    history = (HistoryCase(12, "下单接口 500", 101, 2001, 0.62),)
+    ev = DispatchEvidence(candidates=candidates, history=history)
+    assert ev.candidate_ids == (101, 107)
+    assert ev.recalled(101) is True
+    assert ev.recalled(105) is False
+    assert ev.recalled(None) is True, "转人工不是越选"
+    assert ev.cites("参照工单 12 的处置，派 owner") == (12,)
+    assert ev.cites("派 101，服务 2001 的 owner") == (), "服务号不该被当成工单引用"
+
+
+# --- 派单 v4：三源召回都长在工具里 -------------------------------------------
+
+
+async def test_ownership_candidates_are_never_truncated() -> None:
+    hits = (to_hit(2001, 0.71), to_hit(2002, 0.6))
+    index = FakeIndex(employee_ids=("103", "104", "105", "106", "108"))
+    ids = [c.id for c in await recall_employees(index, "下单接口 500", hits)]
+    assert ids[:3] == [101, 107, 102], "归属候选排在前面，也不占语义名额"
+    assert len(ids) == 3 + MAX_EXTRA_CANDIDATES
+
+
+async def test_semantic_hit_on_an_owner_merges_reasons() -> None:
+    hits = (to_hit(2001, 0.71),)
+    candidates = await recall_employees(FakeIndex(employee_ids=("101", "105")), "下单接口 500", hits)
+    assert [c.id for c in candidates] == [101, 107, 105]
+    assert candidates[0].reasons == ("owner@2001", "semantic")
+    assert candidates[0].structural and not candidates[2].structural
+
+
+async def test_history_recall_reads_the_chunk_metadata() -> None:
+    index = FakeIndex(history=(history_hit(7, "下单接口 500", 101, 2001, 0.62),))
+    cases = await recall_history(index, "下单接口 500")
+    assert (cases[0].ticket_id, cases[0].assignee_id, cases[0].service_id) == (7, 101, 2001)
+    assert "工单 7" in render_history(cases)
+    assert render_history(()) == "无可参考的已结历史工单。"
+    assert render_candidates(()) == "无候选人。"
+
+
+def test_inactive_candidate_stays_visible() -> None:
+    """拦他的是 domain.assign 的在职闸，不是召回 —— 删掉就等于把闸变成死代码。"""
+    text = render_candidates((EmployeeCandidate(_employee(109), 0.5, ("semantic",)),))
+    assert "109" in text and "已离职（不可派单）" in text
+
+
+def test_assignment_log_records_recall_and_citations() -> None:
+    hits = (to_hit(2001, 0.71),)
+    evidence = DispatchEvidence(
+        candidates=(
+            EmployeeCandidate(_employee(101), 0.7, ("owner@2001",)),
+            EmployeeCandidate(_employee(107), None, ("backup@2001",)),
+        ),
+        history=(HistoryCase(7, "下单接口 500", 101, 2001, 0.62),),
+    )
+    store = TicketStore()
+    ticket = make(store).ticket
+    store.assign(ticket.id, decision(assignee="105", rationale="前端更熟"), hits, evidence)
+    assert ticket.assignee_id == 105, "越选只记录，不拦截"
+    assert store.assignments[-1].in_recall is False
+    assert store.assignments[-1].employee_candidates == (101, 107)
+    store.assign(ticket.id, decision(assignee="101", rationale="同工单 7，当初也是他"), hits, evidence)
+    assert store.assignments[-1].in_recall is True
+    assert store.assignments[-1].cited_tickets == (7,)
+    store.assign(ticket.id, decision(assignee="ESCALATE_HUMAN", rationale="无人可派"), hits, evidence)
+    assert store.assignments[-1].in_recall is True

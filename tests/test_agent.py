@@ -15,7 +15,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from agentscope.message import UserMsg  # noqa: E402
 
-from helpdesk.eval.fakes import FakeIndex  # noqa: E402
+from helpdesk.eval.fakes import FakeIndex, history_hit  # noqa: E402
 from helpdesk.eval.scripted_model import ScriptedChatModel, Turn  # noqa: E402
 from helpdesk.runtime import intake as intake_state  # noqa: E402
 from helpdesk.runtime.agent_factory import make_agent  # noqa: E402
@@ -297,3 +297,84 @@ def ctx_block(agent: object, name: str):
             if block.name == name:
                 return block
     raise AssertionError(f"no tool_result for {name}")
+
+
+# --- 派单 v4：三源召回住在工具里，不由模型自愿调用 ----------------------------
+
+
+def result_text(block) -> str:
+    out = block.output
+    if isinstance(out, str):
+        return out
+    first = out[0]
+    return first.text if hasattr(first, "text") else first["text"]
+
+
+async def test_match_service_returns_all_three_sources() -> None:
+    """一次调用给齐服务定位 + 候选人 + 已结历史；模型跳过任何一源的机会都没有。"""
+    index = FakeIndex(history=(history_hit(7, "下单接口 500", 101, 2001, 0.62),))
+    turns = [
+        Turn(tool_calls=[("match_service", {"query": "下单接口报 401"})], id_prefix="m"),
+        Turn(text="材料齐了。"),
+    ]
+    agent, ctx = await make_agent(index, TicketStore(), model=ScriptedChatModel(turns))
+    await agent.reply(UserMsg(name="user", content="派个单"))
+
+    block = ctx_block(agent, "match_service")
+    text = result_text(block)
+    assert "【服务字典命中】" in text and "【召回候选人】" in text and "【已结历史工单" in text
+    assert "owner=101" in text and "工单 7" in text
+    assert block.metadata["employeeCandidates"] == [101, 107]
+    assert block.metadata["history"] == [7]
+
+
+async def test_over_selection_is_annotated_not_blocked() -> None:
+    """越选（选了没召回的人）只提醒 + 记账：硬拦会把召回漏检伪装成无人可派。"""
+    store = TicketStore()
+    store.create(
+        title="下单接口 401",
+        description="下单接口报 401",
+        category=Category.INCIDENT,
+        priority=Priority.P1,
+    )
+    turns = [
+        Turn(tool_calls=[("match_service", {"query": "下单接口报 401"})], id_prefix="m"),
+        Turn(tool_calls=[("assign_ticket", {
+            "ticket_id": 1, "assignee": "105", "rationale": "前端骨干", "confidence": 0.6,
+        })], id_prefix="a"),
+        Turn(text="派给 105。"),
+    ]
+    agent, ctx = await make_agent(FakeIndex(), store, model=ScriptedChatModel(turns))
+    await agent.reply(UserMsg(name="user", content="派个单"))
+
+    block = ctx_block(agent, "assign_ticket")
+    assert block.metadata["in_recall"] is False
+    assert "召回漏检" in result_text(block)
+    assert ctx.store.get(1).assignee_id == 105, "没有拦下来"
+    assert ctx.store.assignments[-1].in_recall is False
+
+
+async def test_assignment_writes_history_that_stays_out_of_recall() -> None:
+    """派完就把单写进历史集合，但 resolved=False → 读取句柄的过滤键把它挡在外面。"""
+    index = FakeIndex()
+    store = TicketStore()
+    store.create(
+        title="下单接口 401",
+        description="下单接口报 401",
+        category=Category.INCIDENT,
+        priority=Priority.P1,
+    )
+    turns = [
+        Turn(tool_calls=[("match_service", {"query": "下单接口报 401"})], id_prefix="m"),
+        Turn(tool_calls=[("assign_ticket", {
+            "ticket_id": 1, "assignee": "101", "rationale": "owner", "confidence": 0.8,
+        })], id_prefix="a"),
+        Turn(text="派给 101。"),
+    ]
+    agent, ctx = await make_agent(index, store, model=ScriptedChatModel(turns))
+    await agent.reply(UserMsg(name="user", content="派个单"))
+
+    assert len(index.written) == 1
+    row = index.written[0]
+    assert (row["ticket_id"], row["assignee_id"], row["service_id"]) == (1, 101, 2001)
+    assert row["resolved"] is False

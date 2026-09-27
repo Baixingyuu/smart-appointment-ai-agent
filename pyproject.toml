@@ -4,7 +4,8 @@ version = "0.1.0"
 description = "AgentScope-native rebuild of the Go helpdesk-agent"
 requires-python = ">=3.11"
 dependencies = [
-    "agentscope[ollama,rag,milvuslite,sql]>=2.0.8,<2.1",
+    "agentscope[ollama,rag,milvuslite,sql,service]>=2.0.8,<2.1",
+    "aiosqlite>=0.22.1",
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
 ]

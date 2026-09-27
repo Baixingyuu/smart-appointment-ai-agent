@@ -21,7 +21,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
-from helpdesk.catalog import employees  # noqa: E402
+from helpdesk.catalog import SERVICES, employees, team_name  # noqa: E402
 
 DATASET = ROOT / "eval/datasets/assignment_v2.json"
 OUT_DIR = Path(__file__).resolve().parent / "out"
@@ -71,13 +71,14 @@ def write_roster(rng: random.Random, path: Path) -> None:
             e.level.value,
             "在职" if e.active else "已离职",
             f"{e.current_load}/{e.max_concurrent}",
+            e.profile,
         ]
         for e in employees()
     ]
     rng.shuffle(rows)
     with path.open("w", encoding="utf-8-sig", newline="") as f:
         w = csv.writer(f)
-        w.writerow(["员工号", "姓名", "团队号", "级别", "在职", "当前负载/上限"])
+        w.writerow(["员工号", "姓名", "团队号", "级别", "在职", "当前负载/上限", "画像"])
         w.writerows(rows)
 
 
@@ -99,6 +100,30 @@ def write_resample(cases: list[dict], rng: random.Random, path: Path) -> Path:
     return path
 
 
+def roster_markdown() -> str:
+    """按当前 catalog 打印 RUBRIC §4 的两张事实表 —— 手抄名册一定会漂移。"""
+    lines = [
+        "| 员工号 | 姓名 | 团队 | 级别 | 在职 | 负载/上限 |",
+        "|---|---|---|---|---|---|",
+    ]
+    for e in employees():
+        lines.append(
+            f"| {e.id} | {e.name.split('（')[0]} | {team_name(e.team_id)} | {e.level.value} "
+            f"| {'是' if e.active else '**否**'} | {e.current_load}/{e.max_concurrent} |",
+        )
+    lines += [
+        "",
+        "### 服务归属",
+        "",
+        "| 服务号 | 服务 | owner | backup |",
+        "|---|---|---|---|",
+    ]
+    for s in SERVICES:
+        backup = "无" if s.backup_owner_id is None else s.backup_owner_id
+        lines.append(f"| {s.id} | {s.name} | {s.owner_id} | {backup} |")
+    return "\n".join(lines)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--seed", type=int, default=SEED)
@@ -107,7 +132,16 @@ def main() -> None:
         action="store_true",
         help="额外生成 10 条自一致性复标子表（隔一轮再填，不要看第一次的答案）",
     )
+    ap.add_argument(
+        "--roster-md",
+        action="store_true",
+        help="只按 catalog 打印 RUBRIC §4 的事实表 markdown，不生成本次标注表",
+    )
     args = ap.parse_args()
+
+    if args.roster_md:
+        print(roster_markdown())
+        return
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     cases = _cases()

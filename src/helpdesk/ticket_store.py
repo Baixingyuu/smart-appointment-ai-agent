@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from .dispatch import AssignmentDecision, ServiceHit
+from .dispatch import AssignmentDecision, DispatchEvidence, ServiceHit
 from .domain import (
     Category,
     Priority,
@@ -31,6 +31,9 @@ class AssignmentLog:
     confidence: float
     candidates: tuple[tuple[int, float], ...]
     sequence: int
+    employee_candidates: tuple[int, ...] = ()
+    in_recall: bool | None = None
+    cited_tickets: tuple[int, ...] = ()
 
     @property
     def outcome(self) -> str:
@@ -117,6 +120,7 @@ class TicketStore:
         ticket_id: int,
         decision: AssignmentDecision,
         hits: tuple[ServiceHit, ...] = (),
+        evidence: DispatchEvidence | None = None,
     ) -> Ticket:
         ticket = self.get(ticket_id)
         assign_ticket(ticket, decision.employee_id)
@@ -129,6 +133,9 @@ class TicketStore:
                 confidence=decision.confidence,
                 candidates=tuple((h.service_id, h.score) for h in hits),
                 sequence=self._next_seq,
+                employee_candidates=() if evidence is None else evidence.candidate_ids,
+                in_recall=None if evidence is None else evidence.recalled(decision.employee_id),
+                cited_tickets=() if evidence is None else evidence.cites(decision.rationale),
             ),
         )
         self._next_seq += 1

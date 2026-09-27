@@ -4,6 +4,11 @@
 工具，绑**只含知识语料**的那个 KnowledgeBase —— 服务字典不进去，否则派单用的 top-3
 服务会污染答案检索。
 
+派单 v4 的三源召回（服务 / 员工画像 / 已结历史）**反过来**放在 `match_service` 里固定
+执行，不留给模型自愿调用。理由是一次实测：模糊问法的 kb_vague 场景里模型一次调用、
+零工具直接反问（`docs/P3_AGENT.md`），而"跳过检索"不会报错，只会产出一条没有证据的
+自信回答 —— 下游无从分辨。让必做的步骤长在工具里，比在提示词里请求它更便宜。
+
 一处接缝证据：`is_state_injected=True` 的工具**不能**靠函数注解生成 schema。
 `tool/_utils.py:113` 会把所有参数（含注入用的 `_agent_state`）建成 pydantic field，
 而 pydantic 拒绝下划线开头的字段名（NameError: Fields must not use names with leading
@@ -26,7 +31,16 @@ from agentscope.message import TextBlock, ToolResultState
 from agentscope.permission import PermissionBehavior, PermissionDecision
 from agentscope.tool import FunctionTool, ToolChunk
 
-from .dispatch import AssignmentDecision, extract_services, render_services
+from .dispatch import (
+    AssignmentDecision,
+    DispatchEvidence,
+    extract_services,
+    recall_employees,
+    recall_history,
+    render_candidates,
+    render_history,
+    render_services,
+)
 from .domain import (
     MAX_ASK_ROUNDS,
     Category,
@@ -34,6 +48,8 @@ from .domain import (
     IntakeProgress,
     InvalidTransition,
     Priority,
+    Ticket,
+    TicketStatus,
     blocking_slots,
     slot_label,
 )
@@ -64,6 +80,7 @@ class HelpdeskContext:
     index: HelpdeskIndex
     store: TicketStore = field(default_factory=TicketStore)
     last_hits: tuple = ()
+    evidence: DispatchEvidence = field(default_factory=DispatchEvidence)
 
 
 class SlotEvidence(BaseModel):
@@ -108,25 +125,60 @@ def _error(text: str, metadata: dict[str, Any] | None = None) -> ToolChunk:
     )
 
 
+async def _record_history(ctx: HelpdeskContext, ticket: Ticket) -> None:
+    """把这张单写进历史集合（document_id=工单号，重复写即覆盖）。
+
+    服务归属取本次 `match_service` 的 top-1 —— 它是系统当初怎么归类的记录，
+    不是真值。未结的单由读取句柄的 `metadata_filter` 挡在召回之外，不靠调用方自觉。
+    """
+    top = ctx.last_hits[0] if ctx.last_hits else None
+    await ctx.index.index_ticket(
+        ticket_id=ticket.id,
+        title=ticket.title,
+        description=ticket.description,
+        assignee_id=ticket.assignee_id,
+        service_id=None if top is None else top.service_id,
+        resolved=ticket.status is TicketStatus.DONE,
+        category=ticket.category.value,
+        priority=ticket.priority.value,
+    )
+
+
 def build_tools(ctx: HelpdeskContext) -> list[FunctionTool]:
     async def match_service(query: str) -> ToolChunk:
-        """把工单文本定位到服务字典里的具体服务，返回 top-3 与相似度。
+        """派单取数：一次给齐服务定位（top-3）、召回候选人、以及可参考的已结历史工单。
 
         Args:
             query (str): 完整句子，形如「标题。描述」
         """
         extraction = await extract_services(ctx.index, query)
+        candidates = await recall_employees(ctx.index, query, extraction.hits)
+        history = await recall_history(ctx.index, query)
         ctx.last_hits = extraction.hits
+        ctx.evidence = DispatchEvidence(candidates=candidates, history=history)
         top = extraction.top1
         lines = [
+            "【服务字典命中】",
             render_services(extraction.hits),
             "",
+            "【召回候选人】",
+            render_candidates(candidates),
+            "",
+            "【已结历史工单（仅作证据，不作投票）】",
+            render_history(history),
+            "",
             "相似度只说明「像不像」，不说明「能不能派」；判空由你在指派时填 "
-            "ESCALATE_HUMAN 来表达，这里没有全局阈值可用。",
+            "ESCALATE_HUMAN 来表达，这里没有全局阈值可用。"
+            "指派也可以选候选人之外的人（枚举是全名册），但那会记成召回漏检。",
         ]
         return _text(
             "\n".join(lines),
-            {"services": [h.service_id for h in extraction.hits], "top1Score": top.score if top else None},
+            {
+                "services": [h.service_id for h in extraction.hits],
+                "top1Score": top.score if top else None,
+                "employeeCandidates": [c.id for c in candidates],
+                "history": [c.ticket_id for c in history],
+            },
         )
 
     def find_open_ticket(text: str) -> ToolChunk:
@@ -229,7 +281,7 @@ def build_tools(ctx: HelpdeskContext) -> list[FunctionTool]:
             },
         )
 
-    def assign_ticket(
+    async def assign_ticket(
         ticket_id: int,
         assignee: str,
         rationale: str,
@@ -240,7 +292,7 @@ def build_tools(ctx: HelpdeskContext) -> list[FunctionTool]:
         Args:
             ticket_id (int): 工单号
             assignee (str): 员工号或 ESCALATE_HUMAN
-            rationale (str): 一句话理由
+            rationale (str): 一句话理由；引用历史时写出「工单 N」
             confidence (float): 0~1
         """
         decision = AssignmentDecision(
@@ -249,17 +301,31 @@ def build_tools(ctx: HelpdeskContext) -> list[FunctionTool]:
             confidence=confidence,
         )
         try:
-            ticket = ctx.store.assign(ticket_id, decision, ctx.last_hits)
+            ticket = ctx.store.assign(ticket_id, decision, ctx.last_hits, ctx.evidence)
         except (UnknownTicket, InvalidTransition) as exc:
             return _error(f"指派被拒绝：{exc}", {"ticket_id": ticket_id, "refused": str(exc)})
+        await _record_history(ctx, ticket)
         target = "转人工待认领" if decision.escalated else f"员工 {ticket.assignee_id}"
+        cited = ctx.evidence.cites(decision.rationale)
+        lines = [f"工单 #{ticket.id} → {target}。理由：{decision.rationale}"]
+        if not ctx.evidence.recalled(decision.employee_id):
+            lines.append(
+                f"提醒：{decision.assignee} 不在刚才召回的候选人里（"
+                f"{'、'.join(str(i) for i in ctx.evidence.candidate_ids)}），"
+                f"本次指派已记为召回漏检，不拦截。",
+            )
+        if ctx.evidence.history and not cited:
+            lines.append("提醒：召回到历史工单，但理由里没引用任何一条。")
         return _text(
-            f"工单 #{ticket.id} → {target}。理由：{decision.rationale}",
+            "\n".join(lines),
             {
                 "ticket_id": ticket.id,
                 "assignee": ticket.assignee_id,
                 "escalated": decision.escalated,
                 "candidates": [[h.service_id, round(h.score, 4)] for h in ctx.last_hits],
+                "employeeCandidates": list(ctx.evidence.candidate_ids),
+                "in_recall": ctx.evidence.recalled(decision.employee_id),
+                "citedTickets": list(cited),
             },
         )
 

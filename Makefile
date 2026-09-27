@@ -1,7 +1,7 @@
 PY := .venv/bin/python
 PYTEST := .venv/bin/python -m pytest
 
-.PHONY: probe probe-p3 index test annotate annotate-recheck validate freeze eval-extract eval-assign eval-retrieval eval-trajectory eval chat
+.PHONY: probe probe-p3 probe-v4 probe-p5 serve web index test annotate annotate-roster annotate-recheck validate freeze eval-extract eval-assign eval-retrieval eval-trajectory eval chat
 
 probe:
 	$(PY) probes/p0_vector_store.py
@@ -18,6 +18,27 @@ probe-p3:
 	$(PY) probes/p3_live_smoke.py kb
 	$(PY) probes/p3_live_smoke.py kb_vague
 
+# 派单 v4 的三源召回：A 段纯检索隔离（不调模型），B 段真机一次 short 实测成本。
+probe-v4:
+	$(PY) probes/p4_dispatch_v4.py
+
+# P5 前端接缝三段：A 离线（路由/工具面/事件映射/桥的翻译表，加 --offline 只跑它），
+# B 真机走框架原生 HITL（证明自研确认桥在这条路上可以不要），
+# C 真机只走 POST /ag-ui（前端看到的那一个端点）。B、C 互斥，各花一次模型钱。
+probe-p5:
+	$(PY) probes/p5_agui_service.py
+
+probe-p5-agui:
+	$(PY) probes/p5_agui_service.py agui
+
+# 托管服务：create_app + AG-UI 协议中间件 + /ag-ui 桥，前端只跟它说话。
+serve:
+	$(PY) -m helpdesk.service $(ARGS)
+
+# CopilotKit 官方 UI（Next.js）：得先起 serve。
+web:
+	cd web && npm run dev
+
 index:
 	$(PY) -m helpdesk.knowledge
 
@@ -26,6 +47,10 @@ test:
 
 annotate:
 	$(PY) eval/annotation/gen_sheet.py
+
+# RUBRIC §4 的组织事实表按 catalog 打印，别手抄（名册 9→24 人时就漂过一次）
+annotate-roster:
+	$(PY) eval/annotation/gen_sheet.py --roster-md
 
 # 隔一轮再填的 10 条复标子表（自一致性；不要先看第一次的答案）
 annotate-recheck:
@@ -52,4 +77,4 @@ eval-trajectory:
 eval: eval-extract eval-retrieval eval-trajectory
 
 chat:
-	$(PY) -m helpdesk.app
+	$(PY) -m helpdesk.app $(ARGS)

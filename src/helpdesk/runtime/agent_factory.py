@@ -18,6 +18,7 @@ from ..knowledge import KNOWLEDGE_SCORE_THRESHOLD, HelpdeskIndex
 from ..ticket_store import TicketStore
 from ..tools import HelpdeskContext, build_tools
 from .intake import AskOutLoudMiddleware, IntakeInjectionMiddleware
+from .tool_surface import ToolSurfaceMiddleware
 from .toolcall_ids import UniqueToolCallIds
 
 CHAT_MODEL = os.environ.get("HELPDESK_CHAT_MODEL", "qwen3:8b")
@@ -37,10 +38,12 @@ SYSTEM_PROMPT = """你是公司 IT 服务台的受理助手，负责把用户的
 4. 建单前用 find_open_ticket 查重；命中重复就追加进展，不要新建。
 5. 用 create_ticket 建单。这是写操作，会等用户确认；缺的阻塞槽位会由系统记进
    missing_info —— 宁建缺信息的工单，也不能丢单。
-6. 建单成功后用 match_service 定位服务，再用 assign_ticket 指派。指派的判断：
-   已离职的人绝不可派；默认派给命中服务的 owner；owner 无余量或技能不符时派 backup；
-   故障（P0/P1）优先 senior，但唯一会做的人比级别更重要；实习坐席只接前端与低风险咨询；
-   主责无法确定或无人可派时，assignee 填 ESCALATE_HUMAN。
+6. 建单成功后用 match_service 一次取齐派单材料（服务定位 + 召回候选人 + 已结历史），
+   再用 assign_ticket 指派。判断次序：已离职的人绝不可派；默认派给命中服务的 owner；
+   owner 无余量或技能不符时派 backup；故障（P0/P1）优先 senior，但唯一会做的人比级别
+   更重要；实习坐席只接前端与低风险咨询；主责无法确定或无人可派时，assignee 填
+   ESCALATE_HUMAN。历史工单只说明"同类问题当初谁在处理"，不能拿来投票；引用它时要在
+   理由里写出「工单 N」。候选人之外的人也可以选，但那等于说召回漏了，系统会记下来。
 7. 相似度分数只说明"像不像"，不存在能把"什么都不像"切开的阈值，判空由你填 ESCALATE_HUMAN。
 
 风格：中文、短句、不客套。每次只推进一件事，别把追问和确认混在一句话里。"""
@@ -84,6 +87,7 @@ async def make_agent(
         # app/_service/_toolkit.py:233 会 await mw.list_tools()），所以这里自己并。
         toolkit=Toolkit(tools=[*build_tools(ctx), *await rag.list_tools()]),
         middlewares=[
+            ToolSurfaceMiddleware(),
             rag,
             IntakeInjectionMiddleware(),
             AskOutLoudMiddleware(),

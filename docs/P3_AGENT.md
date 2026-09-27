@@ -3,7 +3,7 @@
 复现：`make probe-p3`（先离线复现 id 撞车，再跑五个真机场景；
 `.venv/bin/python probes/p3_live_smoke.py [short|intake|dedup|kb|kb_vague]`，只有 `kb` 带退出码断言）、
 `make chat`（同一套接线的交互版）。
-离线断言：`tests/test_agent.py` 22 条，全仓 65 条全过。
+离线断言：`tests/test_agent.py` 25 条，全仓 81 条全过。
 
 ## 五个场景的实跑（真机 qwen3:8b temp=0 + bge-m3 dense）
 

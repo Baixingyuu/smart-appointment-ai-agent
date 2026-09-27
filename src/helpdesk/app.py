@@ -64,6 +64,11 @@ def _summary(store: TicketStore) -> str:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="helpdesk", description="AgentScope 版帮助台 console")
     parser.add_argument("--keep-index", action="store_true", help="不重建向量索引（省一次全量 embedding）")
+    parser.add_argument(
+        "--full-tool-results",
+        action="store_true",
+        help="不截断工具结果（框架默认 20 行，会把 match_service 末尾的【已结历史】截到可见区之外）",
+    )
     parser.add_argument("--verbosity", choices=("quiet", "default", "debug"), default="default")
     args = parser.parse_args(argv)
 
@@ -72,7 +77,10 @@ def main(argv: list[str] | None = None) -> int:
             if not args.keep_index:
                 print("重建索引:", await index.build(recreate=True), flush=True)
             agent, ctx = await make_agent(index)
-            renderer = ConsoleRenderer(verbosity=args.verbosity)
+            renderer = ConsoleRenderer(
+                verbosity=args.verbosity,
+                max_tool_result_lines=None if args.full_tool_results else 20,
+            )
             await chat(agent, ctx.store, renderer)
             print(_summary(ctx.store))
             return 0

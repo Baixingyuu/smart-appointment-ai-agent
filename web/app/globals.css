@@ -1,0 +1,95 @@
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+main {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  height: 100dvh;
+  padding: 20px clamp(16px, 4vw, 48px) 20px;
+}
+
+main h1 {
+  font-size: 17px;
+  margin: 0;
+}
+
+main p.hint {
+  color: #666;
+  font-size: 13px;
+  margin: 0;
+}
+
+.chat {
+  flex: 1;
+  min-height: 0;
+}
+
+.chat > * {
+  height: 100%;
+}
+
+.card {
+  border: 1px solid #d9d9d9;
+  border-radius: 10px;
+  padding: 12px 14px;
+  max-width: 560px;
+  background: #fffdf5;
+}
+
+.card h3 {
+  font-size: 14px;
+  margin: 0 0 8px;
+}
+
+.card dl {
+  display: grid;
+  grid-template-columns: 84px 1fr;
+  gap: 4px 10px;
+  font-size: 13px;
+  margin: 0 0 12px;
+}
+
+.card dt {
+  color: #777;
+}
+
+.card dd {
+  margin: 0;
+}
+
+.card .row {
+  display: flex;
+  gap: 8px;
+}
+
+.card button {
+  border-radius: 8px;
+  border: 1px solid #cfcfcf;
+  background: #fff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 14px;
+}
+
+.card button.primary {
+  background: #1f6feb;
+  border-color: #1f6feb;
+  color: #fff;
+}
+
+.card button:disabled {
+  cursor: progress;
+  opacity: 0.6;
+}
+
+.card .warn {
+  color: #a15c00;
+  font-size: 12px;
+  margin: 8px 0 0;
+}
