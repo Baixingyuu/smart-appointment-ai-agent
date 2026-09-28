@@ -1,7 +1,7 @@
 PY := .venv/bin/python
 PYTEST := .venv/bin/python -m pytest
 
-.PHONY: probe probe-p3 probe-v4 probe-p5 serve web index test annotate annotate-roster annotate-recheck validate freeze eval-extract eval-assign eval-retrieval eval-trajectory eval chat
+.PHONY: probe probe-p3 probe-v4 probe-p5 probe-p5-agui probe-p6 probe-p6-offline probe-p6-cron serve web index test annotate annotate-roster annotate-recheck validate freeze eval eval-trajectory eval-runtime chat
 
 probe:
 	$(PY) probes/p0_vector_store.py
@@ -30,6 +30,19 @@ probe-p5:
 
 probe-p5-agui:
 	$(PY) probes/p5_agui_service.py agui
+
+# P6 专线拆编排的成本对照：A 段离线（挂载差 + 嵌套账），B 段真机两句话各跑关/开两臂。
+# 加 --offline 只跑 A，不花钱。
+probe-p6:
+	$(PY) probes/p6_specialists_cost.py
+
+probe-p6-offline:
+	$(PY) probes/p6_specialists_cost.py --offline
+
+# AutoDream 的 cron 真机验证：把心跳临时调到每分钟，在一次性世界里等它真的醒、
+# 真的调一次 run_autodream、第二轮真的被闸住。约 2–3 分钟；--once 只等第一次。
+probe-p6-cron:
+	$(PY) probes/p6_autodream_cron.py $(ARGS)
 
 # 托管服务：create_app + AG-UI 协议中间件 + /ag-ui 桥，前端只跟它说话。
 serve:
@@ -62,19 +75,19 @@ validate:
 freeze:
 	$(PY) eval/annotation/validate.py --freeze
 
-eval-extract:
-	$(PY) -m helpdesk.eval.run extract
+# 端到端系统评测：真机跑 trajectory 全套，一次产出四个指标 ——
+# ① 回答质量（LLM 评委 relevance/correctness）② 执行轨迹（闸门+步序）
+# ③ P95 延迟（wall/model/tool/wait/residual 四段）④ Token 成本（input/output）。
+eval:
+	$(PY) -m helpdesk.eval.run system
 
-eval-assign:
-	$(PY) -m helpdesk.eval.run assign
-
-eval-retrieval:
-	$(PY) -m helpdesk.eval.run retrieval
-
+# 离线轨迹：脚本化假模型跑同一套断言，不叫真模型，验证链路与量具（快、不花钱）。
 eval-trajectory:
 	$(PY) -m helpdesk.eval.run trajectory
 
-eval: eval-extract eval-retrieval eval-trajectory
+# 运行时轴：读托管路径已落库的历史流量，算真实 P95 延迟与 token 分布（不叫模型）。
+eval-runtime:
+	$(PY) -m helpdesk.eval.run runtime
 
 chat:
 	$(PY) -m helpdesk.app $(ARGS)

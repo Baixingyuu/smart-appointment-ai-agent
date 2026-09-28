@@ -1,6 +1,6 @@
 {
-  "version": 3,
-  "description": "轨迹评测集：断言 Agent 的工具选择、调用顺序、轮次、终态与成本，而非只看回复文本。默认由脚本化假模型驱动（离线可复现，验证链路与断言）；给 eval-trajectory 提供 -api-key 后同一套断言直接驱动真实模型，产出能力测量。注意：轮次断言的语义是「工具循环内的决策轮数」，路由短路的回合轮数为 0。2026-09-19 人工裁决（金标口径变更，理由须留痕）：用户仅表达建单意愿而无任何问题描述时（tj-005/006），正确行为是先追问问题现象，而非带 missingInfo 直接发起建单确认——空描述工单对派单与处理没有价值；「确认取消」路径由 tj-017/018 覆盖（首条消息含问题描述，模型应发起确认，用户随后取消）。2026-09-19 消息拟人化重写：风格参考 JDDC（京东客服多轮对话）与 SMP2019-ECDT（社交媒体客服）的中文口语特征——多句拼接、带时间与影响上下文（「昨天还好好的」「客户在催」）、情绪词、简写口语；同时保留真实 IT 工单的「现象+影响+诉求」结构（参考真实 helpdesk 工单语料的字段分布）。改写约束：① 确认类回复必须含确认词且不含任何取消词（ParseConfirmationDecision 取消词优先，「不用/算了/不要」出现即判取消），version 3 起还不得命中否决短语：自述核实（「确认一下/核实一下」）、否定式（「不确定/无法确认」）、延后表态（「再说/稍等」）、新一轮建单诉求（「帮我建个单」）——命中任一即不判确认，写了这些短语的确认轮用例就不会按批准走；② 寒暄用例保持可短路（不混入故障诉求）；③ knowledge 用例问「怎么做/为什么」而非报障，incident 用例含故障描述或登记诉求；④ tj-005/006 首条消息刻意保持零问题描述（场景本身要求无信息，简洁是功能性而非偷懒）。",
+  "version": 5,
+  "description": "轨迹评测集：断言 Agent 的工具选择、调用顺序、轮次、终态与成本，而非只看回复文本。默认由脚本化假模型驱动（离线可复现，验证链路与断言）；给 eval-trajectory 提供 -api-key 后同一套断言直接驱动真实模型，产出能力测量。注意：轮次断言的语义是「工具循环内的决策轮数」，路由短路的回合轮数为 0。2026-09-19 人工裁决（金标口径变更，理由须留痕）：用户仅表达建单意愿而无任何问题描述时（tj-005/006），正确行为是先追问问题现象，而非带 missingInfo 直接发起建单确认——空描述工单对派单与处理没有价值；「确认取消」路径由 tj-017/018 覆盖（首条消息含问题描述，模型应发起确认，用户随后取消）。2026-09-19 消息拟人化重写：风格参考 JDDC（京东客服多轮对话）与 SMP2019-ECDT（社交媒体客服）的中文口语特征——多句拼接、带时间与影响上下文（「昨天还好好的」「客户在催」）、情绪词、简写口语；同时保留真实 IT 工单的「现象+影响+诉求」结构（参考真实 helpdesk 工单语料的字段分布）。改写约束：① 确认类回复必须含确认词且不含任何取消词（ParseConfirmationDecision 取消词优先，「不用/算了/不要」出现即判取消），version 3 起还不得命中否决短语：自述核实（「确认一下/核实一下」）、否定式（「不确定/无法确认」）、延后表态（「再说/稍等」）、新一轮建单诉求（「帮我建个单」）——命中任一即不判确认，写了这些短语的确认轮用例就不会按批准走；② 寒暄用例保持可短路（不混入故障诉求）；③ knowledge 用例问「怎么做/为什么」而非报障，incident 用例含故障描述或登记诉求；④ tj-005/006 首条消息刻意保持零问题描述（场景本身要求无信息，简洁是功能性而非偷懒）。\n2026-09-27 人工裁决（业务口径变更，工具面白名单同步摘除）：助手不直接派单，只推荐工程师并给出可上门时段，负责人由人在系统外指派。所以每条用例的 forbiddenTools 都加上 assign_ticket；原本没有禁用项的建单类用例把它放在第一位，让 --sabotage 那一档注入的违规正好是「建完单顺手把活派出去」这条被禁的动作。注意这只钉住「不该调」，「该调 match_service 出推荐」目前没有金标。\n2026-09-27 人工裁决（业务口径二次变更，闭环落指派）：助手推荐 2-3 个候选工程师（owner + backup + 语义候选里最贴的 1-2 个，各带一句理由），用户选定后经确认闸调 assign_ticket 落指派。所以每条用例的 forbiddenTools 摘除 assign_ticket（不再禁用），assign_ticket 计入 CONFIRM_TOOLS 走确认闸。原先靠 assign_ticket 当 sabotage 注入点的建单类用例，摘除后 forbiddenTools 为空，--sabotage 那一档退化为「抽掉金标第一步」（软阈值响）；mustNotCall 红线的端到端验证改由知识问答/寒暄类用例（仍禁 ticket_create_confirm 等）承担。「该调 match_service 出推荐」「该调 assign_ticket 落指派」仍无硬金标，只由提示词约束。",
   "cases": [
     {
       "id": "tj-001",
@@ -75,7 +75,8 @@
           "ticket_create_confirm"
         ],
         "maxRounds": 4,
-        "expectTicketCreated": true
+        "expectTicketCreated": true,
+        "forbiddenTools": []
       }
     },
     {
@@ -128,7 +129,8 @@
           "ticket_create_confirm"
         ],
         "maxRounds": 4,
-        "expectTicketCreated": true
+        "expectTicketCreated": true,
+        "forbiddenTools": []
       }
     },
     {
@@ -163,7 +165,8 @@
         "expectTicketCreated": true,
         "tools": [
           "ticket_create_confirm"
-        ]
+        ],
+        "forbiddenTools": []
       }
     },
     {
@@ -182,7 +185,8 @@
           "ticket_create_confirm"
         ],
         "maxRounds": 6,
-        "expectTicketCreated": true
+        "expectTicketCreated": true,
+        "forbiddenTools": []
       }
     },
     {
@@ -299,7 +303,8 @@
         ],
         "maxRounds": 3,
         "expectInterrupted": false,
-        "expectTicketCreated": false
+        "expectTicketCreated": false,
+        "forbiddenTools": []
       }
     },
     {
@@ -316,7 +321,8 @@
           "ticket_create_confirm"
         ],
         "maxRounds": 3,
-        "expectTicketCreated": false
+        "expectTicketCreated": false,
+        "forbiddenTools": []
       }
     },
     {
@@ -333,7 +339,8 @@
           "ticket_create_confirm"
         ],
         "maxRounds": 6,
-        "expectTicketCreated": true
+        "expectTicketCreated": true,
+        "forbiddenTools": []
       }
     },
     {
@@ -351,7 +358,8 @@
         ],
         "maxRounds": 3,
         "expectInterrupted": true,
-        "expectTicketCreated": false
+        "expectTicketCreated": false,
+        "forbiddenTools": []
       }
     },
     {
@@ -369,7 +377,8 @@
         ],
         "maxRounds": 5,
         "expectInterrupted": true,
-        "expectTicketCreated": false
+        "expectTicketCreated": false,
+        "forbiddenTools": []
       }
     }
   ]

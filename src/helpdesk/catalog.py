@@ -29,6 +29,9 @@ class OwnershipKind(StrEnum):
 class Team:
     id: int
     name: str
+    #: 一天内可承接上门的小时区间。空 = 这个组不承接上门服务。
+    #: 这是运营事实，不从级别或负载推出来 —— 改它等同于改名册。
+    on_site: tuple[tuple[int, int], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -88,12 +91,14 @@ class KnowledgeChunk:
 
 
 TEAMS: tuple[Team, ...] = (
-    Team(1, "接口组"),
-    Team(2, "数据组"),
-    Team(3, "权限计费组"),
-    Team(4, "运维组"),
-    Team(5, "前端组"),
-    Team(6, "安全组"),
+    Team(1, "接口组", ((9, 18),)),
+    Team(2, "数据组", ((10, 19),)),
+    Team(3, "权限计费组", ((9, 18),)),
+    Team(4, "运维组", ((8, 20),)),
+    Team(5, "前端组", ((9, 18),)),
+    Team(6, "安全组", ((10, 18),)),
+    # 综合组是服务台一线（录入、转派、跟进），实习组只做咨询类资料整理 ——
+    # 两者都不承担技术处置，所以也不承接上门。
     Team(7, "综合组"),
     Team(8, "实习组"),
 )

@@ -1,0 +1,354 @@
+{
+  "mode": "hosted-sqlite",
+  "dataset": "/Users/mac/dev_projects/helpdesk-agentscope/data/service.db",
+  "runtime": {
+    "samples": 6,
+    "wallMs": {
+      "n": 6,
+      "p50": 24776.6,
+      "p95": 94818.2,
+      "mean": 45182.2,
+      "max": 94818.2
+    },
+    "modelMs": {
+      "n": 6,
+      "p50": 15585.6,
+      "p95": 18998.5,
+      "mean": 15113.9,
+      "max": 18998.5
+    },
+    "toolMs": {
+      "n": 6,
+      "p50": 1692.6,
+      "p95": 2058.9,
+      "mean": 1233.5,
+      "max": 2058.9
+    },
+    "waitMs": {
+      "n": 6,
+      "p50": 7132.1,
+      "p95": 74119.6,
+      "mean": 28834.8,
+      "max": 74119.6
+    },
+    "residualMs": {
+      "n": 6,
+      "p50": -0.0,
+      "p95": 0.1,
+      "mean": 0.0,
+      "max": 0.1
+    },
+    "rounds": {
+      "n": 6,
+      "p50": 4.0,
+      "p95": 4.0,
+      "mean": 3.3,
+      "max": 4.0
+    },
+    "inputTokens": {
+      "n": 6,
+      "p50": 12823.0,
+      "p95": 13665.0,
+      "mean": 10207.7,
+      "max": 13665.0
+    },
+    "outputTokens": {
+      "n": 6,
+      "p50": 272.0,
+      "p95": 296.0,
+      "mean": 220.8,
+      "max": 296.0
+    },
+    "perToolMs": {
+      "ask_user": {
+        "n": 2,
+        "p50": 65.6,
+        "p95": 66.3,
+        "mean": 65.9,
+        "max": 66.3
+      },
+      "assign_ticket": {
+        "n": 4,
+        "p50": 126.8,
+        "p95": 127.1,
+        "mean": 126.2,
+        "max": 127.1
+      },
+      "match_service": {
+        "n": 4,
+        "p50": 1678.8,
+        "p95": 2039.4,
+        "mean": 1830.5,
+        "max": 2039.4
+      }
+    },
+    "p95Note": "n=6 撑不起 P95（向上最近秩下它取的是第 6 名），只能看形状",
+    "excludedReplies": [
+      {
+        "caseId": "5d6a6213#0",
+        "errorKind": "upstream",
+        "error": "The upstream model service returned an error."
+      }
+    ],
+    "excludedNote": "1 份以错误收尾的 reply 不进分布（0 轮 0 token，进 p50 会把真实流量算得又快又省）"
+  },
+  "rows": [
+    {
+      "caseId": "5d6a6213#0",
+      "rounds": 0,
+      "wallMs": 2.6,
+      "modelMs": 2.6,
+      "toolMs": 0.0,
+      "waitMs": 0.0,
+      "residualMs": 0.0,
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "tools": [],
+      "parked": [],
+      "error": "The upstream model service returned an error.",
+      "errorKind": "upstream",
+      "exit": 1,
+      "checks": [
+        {
+          "name": "reply_not_errored",
+          "ok": false,
+          "fatal": false,
+          "detail": "这轮回复以错误收尾（type=upstream，上游/可用性 → 软）：The upstream model service returned an error."
+        },
+        {
+          "name": "confirm_gate",
+          "ok": true,
+          "fatal": true,
+          "detail": "写操作都走闸"
+        },
+        {
+          "name": "no_unhandled_errors",
+          "ok": true,
+          "fatal": false,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "33cae606#0",
+      "rounds": 4,
+      "wallMs": 82386.7,
+      "modelMs": 18100.2,
+      "toolMs": 1692.6,
+      "waitMs": 62593.9,
+      "residualMs": 0.0,
+      "inputTokens": 12823,
+      "outputTokens": 272,
+      "tools": [
+        "create_ticket",
+        "match_service",
+        "assign_ticket"
+      ],
+      "parked": [
+        "create_ticket"
+      ],
+      "error": null,
+      "errorKind": "",
+      "exit": 0,
+      "checks": [
+        {
+          "name": "confirm_gate",
+          "ok": true,
+          "fatal": true,
+          "detail": "写操作都走闸"
+        },
+        {
+          "name": "no_unhandled_errors",
+          "ok": true,
+          "fatal": false,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "eca60b79#0",
+      "rounds": 2,
+      "wallMs": 10945.8,
+      "modelMs": 10945.8,
+      "toolMs": 0.0,
+      "waitMs": 0.0,
+      "residualMs": 0.0,
+      "inputTokens": 4108,
+      "outputTokens": 94,
+      "tools": [
+        "ask_user"
+      ],
+      "parked": [],
+      "error": null,
+      "errorKind": "",
+      "exit": 0,
+      "checks": [
+        {
+          "name": "confirm_gate",
+          "ok": true,
+          "fatal": true,
+          "detail": "写操作都走闸"
+        },
+        {
+          "name": "no_unhandled_errors",
+          "ok": true,
+          "fatal": false,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "eca60b79#1",
+      "rounds": 4,
+      "wallMs": 47554.8,
+      "modelMs": 16442.0,
+      "toolMs": 1949.7,
+      "waitMs": 29163.0,
+      "residualMs": 0.1,
+      "inputTokens": 13665,
+      "outputTokens": 286,
+      "tools": [
+        "create_ticket",
+        "match_service",
+        "assign_ticket"
+      ],
+      "parked": [
+        "create_ticket"
+      ],
+      "error": null,
+      "errorKind": "",
+      "exit": 0,
+      "checks": [
+        {
+          "name": "confirm_gate",
+          "ok": true,
+          "fatal": true,
+          "detail": "写操作都走闸"
+        },
+        {
+          "name": "no_unhandled_errors",
+          "ok": true,
+          "fatal": false,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "e5537716#0",
+      "rounds": 4,
+      "wallMs": 94818.2,
+      "modelMs": 18998.5,
+      "toolMs": 1700.1,
+      "waitMs": 74119.6,
+      "residualMs": -0.0,
+      "inputTokens": 12937,
+      "outputTokens": 292,
+      "tools": [
+        "create_ticket",
+        "match_service",
+        "assign_ticket"
+      ],
+      "parked": [
+        "create_ticket"
+      ],
+      "error": null,
+      "errorKind": "",
+      "exit": 0,
+      "checks": [
+        {
+          "name": "confirm_gate",
+          "ok": true,
+          "fatal": true,
+          "detail": "写操作都走闸"
+        },
+        {
+          "name": "no_unhandled_errors",
+          "ok": true,
+          "fatal": false,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "62929b6f#0",
+      "rounds": 2,
+      "wallMs": 10611.0,
+      "modelMs": 10611.0,
+      "toolMs": 0.0,
+      "waitMs": 0.0,
+      "residualMs": 0.0,
+      "inputTokens": 4078,
+      "outputTokens": 85,
+      "tools": [
+        "ask_user"
+      ],
+      "parked": [],
+      "error": null,
+      "errorKind": "",
+      "exit": 0,
+      "checks": [
+        {
+          "name": "confirm_gate",
+          "ok": true,
+          "fatal": true,
+          "detail": "写操作都走闸"
+        },
+        {
+          "name": "no_unhandled_errors",
+          "ok": true,
+          "fatal": false,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "62929b6f#1",
+      "rounds": 4,
+      "wallMs": 24776.6,
+      "modelMs": 15585.6,
+      "toolMs": 2058.9,
+      "waitMs": 7132.1,
+      "residualMs": -0.0,
+      "inputTokens": 13635,
+      "outputTokens": 296,
+      "tools": [
+        "create_ticket",
+        "match_service",
+        "assign_ticket"
+      ],
+      "parked": [
+        "create_ticket"
+      ],
+      "error": null,
+      "errorKind": "",
+      "exit": 0,
+      "checks": [
+        {
+          "name": "confirm_gate",
+          "ok": true,
+          "fatal": true,
+          "detail": "写操作都走闸"
+        },
+        {
+          "name": "no_unhandled_errors",
+          "ok": true,
+          "fatal": false,
+          "detail": ""
+        }
+      ]
+    }
+  ],
+  "totals": {
+    "runs": 7,
+    "measured": 6,
+    "excluded": 1,
+    "passed": 6,
+    "softFail": 1,
+    "fatalFail": 0
+  },
+  "generatedAt": "2026-09-27T14:42:56+00:00",
+  "embedModel": "bge-m3",
+  "chatModel": "qwen3:8b",
+  "sabotage": [],
+  "axis": "runtime"
+}

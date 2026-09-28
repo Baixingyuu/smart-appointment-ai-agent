@@ -126,8 +126,8 @@ class HistoryCase:
     score: float
 
 
-def _employee_by_id() -> dict[int, Employee]:
-    return {e.id: e for e in employees()}
+def _employee_by_id(roster: tuple[Employee, ...] | None = None) -> dict[int, Employee]:
+    return {e.id: e for e in (roster or employees())}
 
 
 async def recall_employees(
@@ -135,9 +135,14 @@ async def recall_employees(
     query: str,
     hits: tuple[ServiceHit, ...],
     top_k: int = TOP_K_EMPLOYEES,
+    roster: tuple[Employee, ...] | None = None,
 ) -> tuple[EmployeeCandidate, ...]:
-    """归属候选（不截断）∪ 语义候选（最多 MAX_EXTRA_CANDIDATES 个新面孔）。"""
-    by_id = _employee_by_id()
+    """归属候选（不截断）∪ 语义候选（最多 MAX_EXTRA_CANDIDATES 个新面孔）。
+
+    `roster` 传带预约占用的名册视图：负载数字在这里被模型看到，就必须和预约侧同源，
+    否则同一句"还有没有余量"会有两个答案。
+    """
+    by_id = _employee_by_id(roster)
     picked: dict[int, EmployeeCandidate] = {}
     order: list[int] = []
 

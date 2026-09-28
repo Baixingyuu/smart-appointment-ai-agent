@@ -1,11 +1,13 @@
 {
-  "generatedAt": "2026-09-25T17:41:28+00:00",
+  "generatedAt": "2026-09-27T18:08:02+00:00",
   "mode": "offline-deterministic",
   "embedModel": "bge-m3",
   "chatModel": "qwen3:8b",
   "sabotage": [],
   "axis": "retrieval",
   "topK": 10,
+  "prodThreshold": 0.55,
+  "maxLeak": 0.0,
   "dataset": "retrieval.json",
   "metrics": {
     "n": 90,
@@ -79,5 +81,13 @@
         "unanswerable_leak": 0.0
       }
     ]
-  }
+  },
+  "checks": [
+    {
+      "name": "unanswerable_leak",
+      "ok": true,
+      "fatal": false,
+      "detail": "阈值 0.55：leak=0.000 上限=0.000，pass=0.938"
+    }
+  ]
 }

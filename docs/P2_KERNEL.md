@@ -1,8 +1,9 @@
 # P2 内核：两层派单跑出来的两个确定性数字
 
 复现：`make eval-extract`、`make eval-retrieval`（原始逐条结果落 `eval/reports/*.json`）。
-离线断言：`make test`（43 条全过 = `test_kernel.py` 12 条状态机/去重/追问闸/层 2 接缝
-+ `test_metrics.py` 8 条 + `test_annotation_validator.py` 23 条）。
+离线断言：`test_kernel.py` 19 条状态机/去重/追问闸/层 2 接缝
++ `test_metrics.py` 8 条 + `test_annotation_validator.py` 23 条。
+（P2 收尾时这三份是 12/8/23 = 43 条，当时 `make test` 就是这 43 条；2026-09-27 核过 `make test` 已是整仓 263 条。）
 
 代码形状（P2 新增）：
 

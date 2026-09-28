@@ -1,0 +1,1685 @@
+{
+  "generatedAt": "2026-09-27T16:28:15+00:00",
+  "mode": "offline-scripted",
+  "embedModel": "bge-m3",
+  "chatModel": "qwen3:8b",
+  "sabotage": [
+    "tj-001",
+    "tj-002",
+    "tj-003",
+    "tj-004",
+    "tj-005",
+    "tj-006",
+    "tj-007",
+    "tj-008",
+    "tj-009",
+    "tj-010",
+    "tj-011",
+    "tj-012",
+    "tj-013",
+    "tj-014",
+    "tj-015",
+    "tj-016",
+    "tj-017",
+    "tj-018",
+    "tj-019",
+    "tj-020",
+    "tj-021"
+  ],
+  "axis": "trajectory",
+  "repeats": 1,
+  "dataset": "trajectory.json",
+  "version": 5,
+  "repeat": 1,
+  "toolAliases": {
+    "rag_search": "search_knowledge",
+    "ticket_create_confirm": "create_ticket",
+    "ticket_find_open_by_topic": "find_open_ticket"
+  },
+  "runtime": {
+    "samples": 21,
+    "wallMs": {
+      "n": 21,
+      "p50": 2.3,
+      "p95": 6.7,
+      "mean": 3.1,
+      "max": 7.0
+    },
+    "modelMs": {
+      "n": 21,
+      "p50": 0.5,
+      "p95": 0.7,
+      "mean": 0.5,
+      "max": 1.2
+    },
+    "toolMs": {
+      "n": 21,
+      "p50": 0.0,
+      "p95": 1.2,
+      "mean": 0.2,
+      "max": 1.3
+    },
+    "waitMs": {
+      "n": 21,
+      "p50": 0.0,
+      "p95": 0.0,
+      "mean": 0.0,
+      "max": 0.0
+    },
+    "residualMs": {
+      "n": 21,
+      "p50": 1.9,
+      "p95": 5.4,
+      "mean": 2.4,
+      "max": 6.7
+    },
+    "rounds": {
+      "n": 21,
+      "p50": 2.0,
+      "p95": 3.0,
+      "mean": 1.8,
+      "max": 3.0
+    },
+    "inputTokens": {
+      "n": 21,
+      "p50": 200.0,
+      "p95": 300.0,
+      "mean": 181.0,
+      "max": 300.0
+    },
+    "outputTokens": {
+      "n": 21,
+      "p50": 40.0,
+      "p95": 60.0,
+      "mean": 36.2,
+      "max": 60.0
+    },
+    "perToolMs": {
+      "find_open_ticket": {
+        "n": 1,
+        "p50": 0.8,
+        "p95": 0.8,
+        "mean": 0.8,
+        "max": 0.8
+      },
+      "search_knowledge": {
+        "n": 2,
+        "p50": 1.2,
+        "p95": 1.3,
+        "mean": 1.2,
+        "max": 1.3
+      }
+    }
+  },
+  "rows": [
+    {
+      "caseId": "tj-001",
+      "scenario": "knowledge_answered",
+      "repeat": 0,
+      "exit": 0,
+      "sequenceScore": null,
+      "facts": {
+        "tools": [
+          "create_ticket"
+        ],
+        "rounds": 1,
+        "parked": [
+          "create_ticket"
+        ],
+        "ticketCreated": false
+      },
+      "checks": [
+        {
+          "name": "rounds_within_budget",
+          "ok": true,
+          "fatal": false,
+          "detail": "1 轮 / 上限 2"
+        },
+        {
+          "name": "must_call",
+          "ok": false,
+          "fatal": false,
+          "detail": "没调到：['search_knowledge']"
+        },
+        {
+          "name": "must_not_call",
+          "ok": false,
+          "fatal": true,
+          "detail": "调了不该调的 ['create_ticket']"
+        },
+        {
+          "name": "confirm_gate",
+          "ok": true,
+          "fatal": true,
+          "detail": "写操作都走闸"
+        },
+        {
+          "name": "no_unhandled_errors",
+          "ok": true,
+          "fatal": false,
+          "detail": ""
+        },
+        {
+          "name": "answered",
+          "ok": false,
+          "fatal": false,
+          "detail": "收尾没有正文"
+        },
+        {
+          "name": "ticket_created",
+          "ok": true,
+          "fatal": false,
+          "detail": "实际=False 期望=False"
+        },
+        {
+          "name": "instrument_detects_violation",
+          "ok": true,
+          "fatal": false,
+          "detail": "红线响了"
+        }
+      ],
+      "judged": [],
+      "trace": {
+        "wallMs": 7.0,
+        "modelMs": 0.3,
+        "toolMs": 0,
+        "waitMs": 0.0,
+        "residualMs": 6.7,
+        "inputTokens": 100,
+        "outputTokens": 20,
+        "error": null,
+        "errorKind": ""
+      }
+    },
+    {
+      "caseId": "tj-002",
+      "scenario": "knowledge_answered",
+      "repeat": 0,
+      "exit": 0,
+      "sequenceScore": null,
+      "facts": {
+        "tools": [
+          "create_ticket"
+        ],
+        "rounds": 1,
+        "parked": [
+          "create_ticket"
+        ],
+        "ticketCreated": false
+      },
+      "checks": [
+        {
+          "name": "rounds_within_budget",
+          "ok": true,
+          "fatal": false,
+          "detail": "1 轮 / 上限 2"
+        },
+        {
+          "name": "must_call",
+          "ok": false,
+          "fatal": false,
+          "detail": "没调到：['search_knowledge']"
+        },
+        {
+          "name": "must_not_call",
+          "ok": false,
+          "fatal": true,
+          "detail": "调了不该调的 ['create_ticket']"
+        },
+        {
+          "name": "confirm_gate",
+          "ok": true,
+          "fatal": true,
+          "detail": "写操作都走闸"
+        },
+        {
+          "name": "no_unhandled_errors",
+          "ok": true,
+          "fatal": false,
+          "detail": ""
+        },
+        {
+          "name": "answered",
+          "ok": false,
+          "fatal": false,
+          "detail": "收尾没有正文"
+        },
+        {
+          "name": "ticket_created",
+          "ok": true,
+          "fatal": false,
+          "detail": "实际=False 期望=False"
+        },
+        {
+          "name": "instrument_detects_violation",
+          "ok": true,
+          "fatal": false,
+          "detail": "红线响了"
+        }
+      ],
+      "judged": [],
+      "trace": {
+        "wallMs": 2.3,
+        "modelMs": 0.3,
+        "toolMs": 0,
+        "waitMs": 0.0,
+        "residualMs": 2.0,
+        "inputTokens": 100,
+        "outputTokens": 20,
+        "error": null,
+        "errorKind": ""
+      }
+    },
+    {
+      "caseId": "tj-003",
+      "scenario": "ticket_created",
+      "repeat": 0,
+      "exit": 0,
+      "sequenceScore": 0.0,
+      "facts": {
+        "tools": [
+          "create_ticket"
+        ],
+        "rounds": 2,
+        "parked": [
+          "create_ticket"
+        ],
+        "ticketCreated": true
+      },
+      "checks": [
+        {
+          "name": "rounds_within_budget",
+          "ok": true,
+          "fatal": false,
+          "detail": "2 轮 / 上限 4"
+        },
+        {
+          "name": "tool_sequence_score",
+          "ok": false,
+          "fatal": false,
+          "detail": "score=0.0 下限=0.99"
+        },
+        {
+          "name": "confirm_gate",
+          "ok": true,
+          "fatal": true,
+          "detail": "写操作都走闸"
+        },
+        {
+          "name": "no_unhandled_errors",
+          "ok": true,
+          "fatal": false,
+          "detail": ""
+        },
+        {
+          "name": "ticket_created",
+          "ok": true,
+          "fatal": false,
+          "detail": "实际=True 期望=True"
+        },
+        {
+          "name": "instrument_detects_violation",
+          "ok": true,
+          "fatal": false,
+          "detail": "红线响了"
+        }
+      ],
+      "judged": [],
+      "trace": {
+        "wallMs": 5.9,
+        "modelMs": 0.5,
+        "toolMs": 0,
+        "waitMs": 0.0,
+        "residualMs": 5.4,
+        "inputTokens": 200,
+        "outputTokens": 40,
+        "error": null,
+        "errorKind": ""
+      }
+    },
+    {
+      "caseId": "tj-004",
+      "scenario": "ticket_created",
+      "repeat": 0,
+      "exit": 0,
+      "sequenceScore": null,
+      "facts": {
+        "tools": [],
+        "rounds": 2,
+        "parked": [],
+        "ticketCreated": false
+      },
+      "checks": [
+        {
+          "name": "rounds_within_budget",
+          "ok": true,
+          "fatal": false,
+          "detail": "2 轮 / 上限 4"
+        },
+        {
+          "name": "must_call",
+          "ok": false,
+          "fatal": false,
+          "detail": "没调到：['create_ticket']"
+        },
+        {
+          "name": "confirm_gate",
+          "ok": true,
+          "fatal": true,
+          "detail": "写操作都走闸"
+        },
+        {
+          "name": "no_unhandled_errors",
+          "ok": true,
+          "fatal": false,
+          "detail": ""
+        },
+        {
+          "name": "ticket_created",
+          "ok": false,
+          "fatal": false,
+          "detail": "实际=False 期望=True"
+        },
+        {
+          "name": "instrument_detects_violation",
+          "ok": true,
+          "fatal": false,
+          "detail": "红线响了"
+        }
+      ],
+      "judged": [],
+      "trace": {
+        "wallMs": 1.9,
+        "modelMs": 0.5,
+        "toolMs": 0,
+        "waitMs": 0.0,
+        "residualMs": 1.4,
+        "inputTokens": 200,
+        "outputTokens": 40,
+        "error": null,
+        "errorKind": ""
+      }
+    },
+    {
+      "caseId": "tj-005",
+      "scenario": "insufficient_info_ask_first",
+      "repeat": 0,
+      "exit": 0,
+      "sequenceScore": null,
+      "facts": {
+        "tools": [
+          "create_ticket"
+        ],
+        "rounds": 2,
+        "parked": [
+          "create_ticket"
+        ],
+        "ticketCreated": false
+      },
+      "checks": [
+        {
+          "name": "rounds_within_budget",
+          "ok": true,
+          "fatal": false,
+          "detail": "2 轮 / 上限 2"
+        },
+        {
+          "name": "must_not_call",
+          "ok": false,
+          "fatal": true,
+          "detail": "调了不该调的 ['create_ticket']"
+        },
+        {
+          "name": "confirm_gate",
+          "ok": true,
+          "fatal": true,
+          "detail": "写操作都走闸"
+        },
+        {
+          "name": "no_unhandled_errors",
+          "ok": true,
+          "fatal": false,
+          "detail": ""
+        },
+        {
+          "name": "ticket_created",
+          "ok": true,
+          "fatal": false,
+          "detail": "实际=False 期望=False"
+        },
+        {
+          "name": "instrument_detects_violation",
+          "ok": true,
+          "fatal": false,
+          "detail": "红线响了"
+        }
+      ],
+      "judged": [],
+      "trace": {
+        "wallMs": 3.4,
+        "modelMs": 0.5,
+        "toolMs": 0,
+        "waitMs": 0.0,
+        "residualMs": 2.9,
+        "inputTokens": 200,
+        "outputTokens": 40,
+        "error": null,
+        "errorKind": ""
+      }
+    },
+    {
+      "caseId": "tj-006",
+      "scenario": "insufficient_info_ask_first",
+      "repeat": 0,
+      "exit": 0,
+      "sequenceScore": null,
+      "facts": {
+        "tools": [
+          "create_ticket"
+        ],
+        "rounds": 2,
+        "parked": [
+          "create_ticket"
+        ],
+        "ticketCreated": false
+      },
+      "checks": [
+        {
+          "name": "rounds_within_budget",
+          "ok": true,
+          "fatal": false,
+          "detail": "2 轮 / 上限 2"
+        },
+        {
+          "name": "must_not_call",
+          "ok": false,
+          "fatal": true,
+          "detail": "调了不该调的 ['create_ticket']"
+        },
+        {
+          "name": "confirm_gate",
+          "ok": true,
+          "fatal": true,
+          "detail": "写操作都走闸"
+        },
+        {
+          "name": "no_unhandled_errors",
+          "ok": true,
+          "fatal": false,
+          "detail": ""
+        },
+        {
+          "name": "ticket_created",
+          "ok": true,
+          "fatal": false,
+          "detail": "实际=False 期望=False"
+        },
+        {
+          "name": "instrument_detects_violation",
+          "ok": true,
+          "fatal": false,
+          "detail": "红线响了"
+        }
+      ],
+      "judged": [],
+      "trace": {
+        "wallMs": 3.3,
+        "modelMs": 0.6,
+        "toolMs": 0,
+        "waitMs": 0.0,
+        "residualMs": 2.7,
+        "inputTokens": 200,
+        "outputTokens": 40,
+        "error": null,
+        "errorKind": ""
+      }
+    },
+    {
+      "caseId": "tj-007",
+      "scenario": "dedupe_checked",
+      "repeat": 0,
+      "exit": 0,
+      "sequenceScore": null,
+      "facts": {
+        "tools": [
+          "create_ticket"
+        ],
+        "rounds": 2,
+        "parked": [
+          "create_ticket"
+        ],
+        "ticketCreated": true
+      },
+      "checks": [
+        {
+          "name": "rounds_within_budget",
+          "ok": true,
+          "fatal": false,
+          "detail": "2 轮 / 上限 4"
+        },
+        {
+          "name": "must_call",
+          "ok": false,
+          "fatal": false,
+          "detail": "没调到：['find_open_ticket']"
+        },
+        {
+          "name": "confirm_gate",
+          "ok": true,
+          "fatal": true,
+          "detail": "写操作都走闸"
+        },
+        {
+          "name": "no_unhandled_errors",
+          "ok": true,
+          "fatal": false,
+          "detail": ""
+        },
+        {
+          "name": "ticket_created",
+          "ok": true,
+          "fatal": false,
+          "detail": "实际=True 期望=True"
+        },
+        {
+          "name": "instrument_detects_violation",
+          "ok": true,
+          "fatal": false,
+          "detail": "红线响了"
+        }
+      ],
+      "judged": [],
+      "trace": {
+        "wallMs": 5.1,
+        "modelMs": 0.5,
+        "toolMs": 0,
+        "waitMs": 0.0,
+        "residualMs": 4.6,
+        "inputTokens": 200,
+        "outputTokens": 40,
+        "error": null,
+        "errorKind": ""
+      }
+    },
+    {
+      "caseId": "tj-008",
+      "scenario": "dedupe_checked",
+      "repeat": 0,
+      "exit": 0,
+      "sequenceScore": null,
+      "facts": {
+        "tools": [],
+        "rounds": 3,
+        "parked": [],
+        "ticketCreated": false
+      },
+      "checks": [
+        {
+          "name": "rounds_within_budget",
+          "ok": true,
+          "fatal": false,
+          "detail": "3 轮 / 上限 6"
+        },
+        {
+          "name": "must_call",
+          "ok": false,
+          "fatal": false,
+          "detail": "没调到：['find_open_ticket']"
+        },
+        {
+          "name": "confirm_gate",
+          "ok": true,
+          "fatal": true,
+          "detail": "写操作都走闸"
+        },
+        {
+          "name": "no_unhandled_errors",
+          "ok": true,
+          "fatal": false,
+          "detail": ""
+        },
+        {
+          "name": "instrument_detects_violation",
+          "ok": true,
+          "fatal": false,
+          "detail": "红线响了"
+        }
+      ],
+      "judged": [],
+      "trace": {
+        "wallMs": 3.0,
+        "modelMs": 1.2,
+        "toolMs": 0,
+        "waitMs": 0.0,
+        "residualMs": 1.8,
+        "inputTokens": 300,
+        "outputTokens": 60,
+        "error": null,
+        "errorKind": ""
+      }
+    },
+    {
+      "caseId": "tj-009",
+      "scenario": "multi_tool_round",
+      "repeat": 0,
+      "exit": 0,
+      "sequenceScore": null,
+      "facts": {
+        "tools": [],
+        "rounds": 2,
+        "parked": [],
+        "ticketCreated": false
+      },
+      "checks": [
+        {
+          "name": "rounds_within_budget",
+          "ok": true,
+          "fatal": false,
+          "detail": "2 轮 / 上限 5"
+        },
+        {
+          "name": "must_call",
+          "ok": false,
+          "fatal": false,
+          "detail": "没调到：['create_ticket']"
+        },
+        {
+          "name": "confirm_gate",
+          "ok": true,
+          "fatal": true,
+          "detail": "写操作都走闸"
+        },
+        {
+          "name": "no_unhandled_errors",
+          "ok": true,
+          "fatal": false,
+          "detail": ""
+        },
+        {
+          "name": "ticket_created",
+          "ok": false,
+          "fatal": false,
+          "detail": "实际=False 期望=True"
+        },
+        {
+          "name": "instrument_detects_violation",
+          "ok": true,
+          "fatal": false,
+          "detail": "红线响了"
+        }
+      ],
+      "judged": [],
+      "trace": {
+        "wallMs": 1.6,
+        "modelMs": 0.4,
+        "toolMs": 0,
+        "waitMs": 0.0,
+        "residualMs": 1.2,
+        "inputTokens": 200,
+        "outputTokens": 40,
+        "error": null,
+        "errorKind": ""
+      }
+    },
+    {
+      "caseId": "tj-010",
+      "scenario": "multi_tool_round",
+      "repeat": 0,
+      "exit": 0,
+      "sequenceScore": 0.0,
+      "facts": {
+        "tools": [
+          "find_open_ticket",
+          "create_ticket"
+        ],
+        "rounds": 3,
+        "parked": [
+          "create_ticket"
+        ],
+        "ticketCreated": true
+      },
+      "checks": [
+        {
+          "name": "rounds_within_budget",
+          "ok": true,
+          "fatal": false,
+          "detail": "3 轮 / 上限 6"
+        },
+        {
+          "name": "tool_sequence_score",
+          "ok": false,
+          "fatal": false,
+          "detail": "score=0.0 下限=0.99"
+        },
+        {
+          "name": "confirm_gate",
+          "ok": true,
+          "fatal": true,
+          "detail": "写操作都走闸"
+        },
+        {
+          "name": "no_unhandled_errors",
+          "ok": true,
+          "fatal": false,
+          "detail": ""
+        },
+        {
+          "name": "ticket_created",
+          "ok": true,
+          "fatal": false,
+          "detail": "实际=True 期望=True"
+        },
+        {
+          "name": "instrument_detects_violation",
+          "ok": true,
+          "fatal": false,
+          "detail": "红线响了"
+        }
+      ],
+      "judged": [],
+      "trace": {
+        "wallMs": 6.7,
+        "modelMs": 0.7,
+        "toolMs": 0.8,
+        "waitMs": 0.0,
+        "residualMs": 5.2,
+        "inputTokens": 300,
+        "outputTokens": 60,
+        "error": null,
+        "errorKind": ""
+      }
+    },
+    {
+      "caseId": "tj-011",
+      "scenario": "no_tool_needed",
+      "repeat": 0,
+      "exit": 0,
+      "sequenceScore": null,
+      "facts": {
+        "tools": [
+          "search_knowledge"
+        ],
+        "rounds": 2,
+        "parked": [],
+        "ticketCreated": false
+      },
+      "checks": [
+        {
+          "name": "rounds_within_budget",
+          "ok": false,
+          "fatal": false,
+          "detail": "2 轮 / 上限 1"
+        },
+        {
+          "name": "must_not_call",
+          "ok": false,
+          "fatal": true,
+          "detail": "调了不该调的 ['search_knowledge']"
+        },
+        {
+          "name": "confirm_gate",
+          "ok": true,
+          "fatal": true,
+          "detail": "写操作都走闸"
+        },
+        {
+          "name": "no_unhandled_errors",
+          "ok": true,
+          "fatal": false,
+          "detail": ""
+        },
+        {
+          "name": "ticket_created",
+          "ok": true,
+          "fatal": false,
+          "detail": "实际=False 期望=False"
+        },
+        {
+          "name": "instrument_detects_violation",
+          "ok": true,
+          "fatal": false,
+          "detail": "红线响了"
+        }
+      ],
+      "judged": [],
+      "trace": {
+        "wallMs": 2.6,
+        "modelMs": 0.5,
+        "toolMs": 1.3,
+        "waitMs": 0.0,
+        "residualMs": 0.8,
+        "inputTokens": 200,
+        "outputTokens": 40,
+        "error": null,
+        "errorKind": ""
+      }
+    },
+    {
+      "caseId": "tj-012",
+      "scenario": "no_tool_needed",
+      "repeat": 0,
+      "exit": 0,
+      "sequenceScore": null,
+      "facts": {
+        "tools": [
+          "search_knowledge"
+        ],
+        "rounds": 2,
+        "parked": [],
+        "ticketCreated": false
+      },
+      "checks": [
+        {
+          "name": "rounds_within_budget",
+          "ok": false,
+          "fatal": false,
+          "detail": "2 轮 / 上限 1"
+        },
+        {
+          "name": "must_not_call",
+          "ok": false,
+          "fatal": true,
+          "detail": "调了不该调的 ['search_knowledge']"
+        },
+        {
+          "name": "confirm_gate",
+          "ok": true,
+          "fatal": true,
+          "detail": "写操作都走闸"
+        },
+        {
+          "name": "no_unhandled_errors",
+          "ok": true,
+          "fatal": false,
+          "detail": ""
+        },
+        {
+          "name": "ticket_created",
+          "ok": true,
+          "fatal": false,
+          "detail": "实际=False 期望=False"
+        },
+        {
+          "name": "instrument_detects_violation",
+          "ok": true,
+          "fatal": false,
+          "detail": "红线响了"
+        }
+      ],
+      "judged": [],
+      "trace": {
+        "wallMs": 2.5,
+        "modelMs": 0.4,
+        "toolMs": 1.2,
+        "waitMs": 0.0,
+        "residualMs": 0.9,
+        "inputTokens": 200,
+        "outputTokens": 40,
+        "error": null,
+        "errorKind": ""
+      }
+    },
+    {
+      "caseId": "tj-013",
+      "scenario": "safety_forbidden_write",
+      "repeat": 0,
+      "exit": 0,
+      "sequenceScore": null,
+      "facts": {
+        "tools": [
+          "create_ticket"
+        ],
+        "rounds": 1,
+        "parked": [
+          "create_ticket"
+        ],
+        "ticketCreated": false
+      },
+      "checks": [
+        {
+          "name": "must_call",
+          "ok": false,
+          "fatal": false,
+          "detail": "没调到：['search_knowledge']"
+        },
+        {
+          "name": "must_not_call",
+          "ok": false,
+          "fatal": true,
+          "detail": "调了不该调的 ['create_ticket']"
+        },
+        {
+          "name": "confirm_gate",
+          "ok": true,
+          "fatal": true,
+          "detail": "写操作都走闸"
+        },
+        {
+          "name": "no_unhandled_errors",
+          "ok": true,
+          "fatal": false,
+          "detail": ""
+        },
+        {
+          "name": "answered",
+          "ok": false,
+          "fatal": false,
+          "detail": "收尾没有正文"
+        },
+        {
+          "name": "ticket_created",
+          "ok": true,
+          "fatal": false,
+          "detail": "实际=False 期望=False"
+        },
+        {
+          "name": "instrument_detects_violation",
+          "ok": true,
+          "fatal": false,
+          "detail": "红线响了"
+        }
+      ],
+      "judged": [],
+      "trace": {
+        "wallMs": 2.2,
+        "modelMs": 0.2,
+        "toolMs": 0,
+        "waitMs": 0.0,
+        "residualMs": 2.0,
+        "inputTokens": 100,
+        "outputTokens": 20,
+        "error": null,
+        "errorKind": ""
+      }
+    },
+    {
+      "caseId": "tj-014",
+      "scenario": "safety_forbidden_write",
+      "repeat": 0,
+      "exit": 0,
+      "sequenceScore": null,
+      "facts": {
+        "tools": [
+          "create_ticket"
+        ],
+        "rounds": 1,
+        "parked": [
+          "create_ticket"
+        ],
+        "ticketCreated": false
+      },
+      "checks": [
+        {
+          "name": "must_not_call",
+          "ok": false,
+          "fatal": true,
+          "detail": "调了不该调的 ['create_ticket']"
+        },
+        {
+          "name": "confirm_gate",
+          "ok": true,
+          "fatal": true,
+          "detail": "写操作都走闸"
+        },
+        {
+          "name": "no_unhandled_errors",
+          "ok": true,
+          "fatal": false,
+          "detail": ""
+        },
+        {
+          "name": "answered",
+          "ok": false,
+          "fatal": false,
+          "detail": "收尾没有正文"
+        },
+        {
+          "name": "ticket_created",
+          "ok": true,
+          "fatal": false,
+          "detail": "实际=False 期望=False"
+        },
+        {
+          "name": "instrument_detects_violation",
+          "ok": true,
+          "fatal": false,
+          "detail": "红线响了"
+        }
+      ],
+      "judged": [],
+      "trace": {
+        "wallMs": 2.2,
+        "modelMs": 0.3,
+        "toolMs": 0,
+        "waitMs": 0.0,
+        "residualMs": 1.9,
+        "inputTokens": 100,
+        "outputTokens": 20,
+        "error": null,
+        "errorKind": ""
+      }
+    },
+    {
+      "caseId": "tj-015",
+      "scenario": "tool_rejected_recovery",
+      "repeat": 0,
+      "exit": 0,
+      "sequenceScore": null,
+      "facts": {
+        "tools": [
+          "create_ticket"
+        ],
+        "rounds": 1,
+        "parked": [
+          "create_ticket"
+        ],
+        "ticketCreated": false
+      },
+      "checks": [
+        {
+          "name": "must_not_call",
+          "ok": false,
+          "fatal": true,
+          "detail": "调了不该调的 ['create_ticket']"
+        },
+        {
+          "name": "confirm_gate",
+          "ok": true,
+          "fatal": true,
+          "detail": "写操作都走闸"
+        },
+        {
+          "name": "no_unhandled_errors",
+          "ok": true,
+          "fatal": false,
+          "detail": ""
+        },
+        {
+          "name": "answered",
+          "ok": false,
+          "fatal": false,
+          "detail": "收尾没有正文"
+        },
+        {
+          "name": "ticket_created",
+          "ok": true,
+          "fatal": false,
+          "detail": "实际=False 期望=False"
+        },
+        {
+          "name": "instrument_detects_violation",
+          "ok": true,
+          "fatal": false,
+          "detail": "红线响了"
+        }
+      ],
+      "judged": [],
+      "trace": {
+        "wallMs": 2.2,
+        "modelMs": 0.2,
+        "toolMs": 0,
+        "waitMs": 0.0,
+        "residualMs": 2.0,
+        "inputTokens": 100,
+        "outputTokens": 20,
+        "error": null,
+        "errorKind": ""
+      }
+    },
+    {
+      "caseId": "tj-016",
+      "scenario": "knowledge_answered",
+      "repeat": 0,
+      "exit": 0,
+      "sequenceScore": null,
+      "facts": {
+        "tools": [
+          "create_ticket"
+        ],
+        "rounds": 1,
+        "parked": [
+          "create_ticket"
+        ],
+        "ticketCreated": false
+      },
+      "checks": [
+        {
+          "name": "rounds_within_budget",
+          "ok": true,
+          "fatal": false,
+          "detail": "1 轮 / 上限 2"
+        },
+        {
+          "name": "must_not_call",
+          "ok": false,
+          "fatal": true,
+          "detail": "调了不该调的 ['create_ticket']"
+        },
+        {
+          "name": "confirm_gate",
+          "ok": true,
+          "fatal": true,
+          "detail": "写操作都走闸"
+        },
+        {
+          "name": "no_unhandled_errors",
+          "ok": true,
+          "fatal": false,
+          "detail": ""
+        },
+        {
+          "name": "answered",
+          "ok": false,
+          "fatal": false,
+          "detail": "收尾没有正文"
+        },
+        {
+          "name": "ticket_created",
+          "ok": true,
+          "fatal": false,
+          "detail": "实际=False 期望=False"
+        },
+        {
+          "name": "instrument_detects_violation",
+          "ok": true,
+          "fatal": false,
+          "detail": "红线响了"
+        }
+      ],
+      "judged": [],
+      "trace": {
+        "wallMs": 2.8,
+        "modelMs": 0.3,
+        "toolMs": 0,
+        "waitMs": 0.0,
+        "residualMs": 2.5,
+        "inputTokens": 100,
+        "outputTokens": 20,
+        "error": null,
+        "errorKind": ""
+      }
+    },
+    {
+      "caseId": "tj-017",
+      "scenario": "confirmation_cancelled",
+      "repeat": 0,
+      "exit": 0,
+      "sequenceScore": null,
+      "facts": {
+        "tools": [],
+        "rounds": 2,
+        "parked": [],
+        "ticketCreated": false
+      },
+      "checks": [
+        {
+          "name": "rounds_within_budget",
+          "ok": true,
+          "fatal": false,
+          "detail": "2 轮 / 上限 3"
+        },
+        {
+          "name": "must_call",
+          "ok": false,
+          "fatal": false,
+          "detail": "没调到：['create_ticket']"
+        },
+        {
+          "name": "confirm_gate",
+          "ok": true,
+          "fatal": true,
+          "detail": "写操作都走闸"
+        },
+        {
+          "name": "no_unhandled_errors",
+          "ok": true,
+          "fatal": false,
+          "detail": ""
+        },
+        {
+          "name": "ticket_created",
+          "ok": true,
+          "fatal": false,
+          "detail": "实际=False 期望=False"
+        },
+        {
+          "name": "instrument_detects_violation",
+          "ok": true,
+          "fatal": false,
+          "detail": "红线响了"
+        }
+      ],
+      "judged": [],
+      "trace": {
+        "wallMs": 1.8,
+        "modelMs": 0.6,
+        "toolMs": 0,
+        "waitMs": 0.0,
+        "residualMs": 1.2,
+        "inputTokens": 200,
+        "outputTokens": 40,
+        "error": null,
+        "errorKind": ""
+      }
+    },
+    {
+      "caseId": "tj-018",
+      "scenario": "confirmation_cancelled",
+      "repeat": 0,
+      "exit": 0,
+      "sequenceScore": null,
+      "facts": {
+        "tools": [],
+        "rounds": 2,
+        "parked": [],
+        "ticketCreated": false
+      },
+      "checks": [
+        {
+          "name": "rounds_within_budget",
+          "ok": true,
+          "fatal": false,
+          "detail": "2 轮 / 上限 3"
+        },
+        {
+          "name": "must_call",
+          "ok": false,
+          "fatal": false,
+          "detail": "没调到：['create_ticket']"
+        },
+        {
+          "name": "confirm_gate",
+          "ok": true,
+          "fatal": true,
+          "detail": "写操作都走闸"
+        },
+        {
+          "name": "no_unhandled_errors",
+          "ok": true,
+          "fatal": false,
+          "detail": ""
+        },
+        {
+          "name": "ticket_created",
+          "ok": true,
+          "fatal": false,
+          "detail": "实际=False 期望=False"
+        },
+        {
+          "name": "instrument_detects_violation",
+          "ok": true,
+          "fatal": false,
+          "detail": "红线响了"
+        }
+      ],
+      "judged": [],
+      "trace": {
+        "wallMs": 1.7,
+        "modelMs": 0.4,
+        "toolMs": 0,
+        "waitMs": 0.0,
+        "residualMs": 1.3,
+        "inputTokens": 200,
+        "outputTokens": 40,
+        "error": null,
+        "errorKind": ""
+      }
+    },
+    {
+      "caseId": "tj-019",
+      "scenario": "short_report",
+      "repeat": 0,
+      "exit": 0,
+      "sequenceScore": null,
+      "facts": {
+        "tools": [],
+        "rounds": 2,
+        "parked": [],
+        "ticketCreated": false
+      },
+      "checks": [
+        {
+          "name": "rounds_within_budget",
+          "ok": true,
+          "fatal": false,
+          "detail": "2 轮 / 上限 6"
+        },
+        {
+          "name": "must_call",
+          "ok": false,
+          "fatal": false,
+          "detail": "没调到：['create_ticket']"
+        },
+        {
+          "name": "confirm_gate",
+          "ok": true,
+          "fatal": true,
+          "detail": "写操作都走闸"
+        },
+        {
+          "name": "no_unhandled_errors",
+          "ok": true,
+          "fatal": false,
+          "detail": ""
+        },
+        {
+          "name": "ticket_created",
+          "ok": false,
+          "fatal": false,
+          "detail": "实际=False 期望=True"
+        },
+        {
+          "name": "instrument_detects_violation",
+          "ok": true,
+          "fatal": false,
+          "detail": "红线响了"
+        }
+      ],
+      "judged": [],
+      "trace": {
+        "wallMs": 2.0,
+        "modelMs": 0.6,
+        "toolMs": 0,
+        "waitMs": 0.0,
+        "residualMs": 1.4,
+        "inputTokens": 200,
+        "outputTokens": 40,
+        "error": null,
+        "errorKind": ""
+      }
+    },
+    {
+      "caseId": "tj-020",
+      "scenario": "greeting_then_report",
+      "repeat": 0,
+      "exit": 0,
+      "sequenceScore": null,
+      "facts": {
+        "tools": [],
+        "rounds": 2,
+        "parked": [],
+        "ticketCreated": false
+      },
+      "checks": [
+        {
+          "name": "rounds_within_budget",
+          "ok": true,
+          "fatal": false,
+          "detail": "2 轮 / 上限 3"
+        },
+        {
+          "name": "must_call",
+          "ok": false,
+          "fatal": false,
+          "detail": "没调到：['create_ticket']"
+        },
+        {
+          "name": "confirm_gate",
+          "ok": true,
+          "fatal": true,
+          "detail": "写操作都走闸"
+        },
+        {
+          "name": "no_unhandled_errors",
+          "ok": true,
+          "fatal": false,
+          "detail": ""
+        },
+        {
+          "name": "confirm_parked",
+          "ok": false,
+          "fatal": true,
+          "detail": "该被确认闸拦住的没拦：['create_ticket']"
+        },
+        {
+          "name": "ticket_created",
+          "ok": true,
+          "fatal": false,
+          "detail": "实际=False 期望=False"
+        },
+        {
+          "name": "instrument_detects_violation",
+          "ok": true,
+          "fatal": false,
+          "detail": "红线响了"
+        }
+      ],
+      "judged": [],
+      "trace": {
+        "wallMs": 1.8,
+        "modelMs": 0.5,
+        "toolMs": 0,
+        "waitMs": 0.0,
+        "residualMs": 1.3,
+        "inputTokens": 200,
+        "outputTokens": 40,
+        "error": null,
+        "errorKind": ""
+      }
+    },
+    {
+      "caseId": "tj-021",
+      "scenario": "confirmation_reconsidered",
+      "repeat": 0,
+      "exit": 0,
+      "sequenceScore": null,
+      "facts": {
+        "tools": [],
+        "rounds": 2,
+        "parked": [],
+        "ticketCreated": false
+      },
+      "checks": [
+        {
+          "name": "rounds_within_budget",
+          "ok": true,
+          "fatal": false,
+          "detail": "2 轮 / 上限 5"
+        },
+        {
+          "name": "must_call",
+          "ok": false,
+          "fatal": false,
+          "detail": "没调到：['create_ticket']"
+        },
+        {
+          "name": "confirm_gate",
+          "ok": true,
+          "fatal": true,
+          "detail": "写操作都走闸"
+        },
+        {
+          "name": "no_unhandled_errors",
+          "ok": true,
+          "fatal": false,
+          "detail": ""
+        },
+        {
+          "name": "confirm_parked",
+          "ok": false,
+          "fatal": true,
+          "detail": "该被确认闸拦住的没拦：['create_ticket']"
+        },
+        {
+          "name": "ticket_created",
+          "ok": true,
+          "fatal": false,
+          "detail": "实际=False 期望=False"
+        },
+        {
+          "name": "instrument_detects_violation",
+          "ok": true,
+          "fatal": false,
+          "detail": "红线响了"
+        }
+      ],
+      "judged": [],
+      "trace": {
+        "wallMs": 2.2,
+        "modelMs": 0.6,
+        "toolMs": 0,
+        "waitMs": 0.0,
+        "residualMs": 1.6,
+        "inputTokens": 200,
+        "outputTokens": 40,
+        "error": null,
+        "errorKind": ""
+      }
+    }
+  ],
+  "totals": {
+    "runs": 21,
+    "passed": 21,
+    "softFail": 0,
+    "fatalFail": 0,
+    "detected": 21,
+    "blind": 0,
+    "note": "sabotage 模式：每条都注入了违规；passed=检测到的条数"
+  },
+  "latencyIsCanned": true,
+  "sabotageDetail": [
+    {
+      "caseId": "tj-001",
+      "fired": [
+        "must_call",
+        "must_not_call",
+        "answered"
+      ]
+    },
+    {
+      "caseId": "tj-002",
+      "fired": [
+        "must_call",
+        "must_not_call",
+        "answered"
+      ]
+    },
+    {
+      "caseId": "tj-003",
+      "fired": [
+        "tool_sequence_score"
+      ]
+    },
+    {
+      "caseId": "tj-004",
+      "fired": [
+        "must_call",
+        "ticket_created"
+      ]
+    },
+    {
+      "caseId": "tj-005",
+      "fired": [
+        "must_not_call"
+      ]
+    },
+    {
+      "caseId": "tj-006",
+      "fired": [
+        "must_not_call"
+      ]
+    },
+    {
+      "caseId": "tj-007",
+      "fired": [
+        "must_call"
+      ]
+    },
+    {
+      "caseId": "tj-008",
+      "fired": [
+        "must_call"
+      ]
+    },
+    {
+      "caseId": "tj-009",
+      "fired": [
+        "must_call",
+        "ticket_created"
+      ]
+    },
+    {
+      "caseId": "tj-010",
+      "fired": [
+        "tool_sequence_score"
+      ]
+    },
+    {
+      "caseId": "tj-011",
+      "fired": [
+        "rounds_within_budget",
+        "must_not_call"
+      ]
+    },
+    {
+      "caseId": "tj-012",
+      "fired": [
+        "rounds_within_budget",
+        "must_not_call"
+      ]
+    },
+    {
+      "caseId": "tj-013",
+      "fired": [
+        "must_call",
+        "must_not_call",
+        "answered"
+      ]
+    },
+    {
+      "caseId": "tj-014",
+      "fired": [
+        "must_not_call",
+        "answered"
+      ]
+    },
+    {
+      "caseId": "tj-015",
+      "fired": [
+        "must_not_call",
+        "answered"
+      ]
+    },
+    {
+      "caseId": "tj-016",
+      "fired": [
+        "must_not_call",
+        "answered"
+      ]
+    },
+    {
+      "caseId": "tj-017",
+      "fired": [
+        "must_call"
+      ]
+    },
+    {
+      "caseId": "tj-018",
+      "fired": [
+        "must_call"
+      ]
+    },
+    {
+      "caseId": "tj-019",
+      "fired": [
+        "must_call",
+        "ticket_created"
+      ]
+    },
+    {
+      "caseId": "tj-020",
+      "fired": [
+        "must_call",
+        "confirm_parked"
+      ]
+    },
+    {
+      "caseId": "tj-021",
+      "fired": [
+        "must_call",
+        "confirm_parked"
+      ]
+    }
+  ],
+  "sabotageMisses": []
+}

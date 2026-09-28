@@ -1,0 +1,182 @@
+{
+  "generatedAt": "2026-09-27T18:09:10+00:00",
+  "mode": "live",
+  "embedModel": "bge-m3",
+  "chatModel": "qwen3:8b",
+  "sabotage": [],
+  "axis": "system",
+  "repeats": 1,
+  "dataset": "trajectory.json",
+  "version": 5,
+  "repeat": 1,
+  "toolAliases": {
+    "rag_search": "search_knowledge",
+    "ticket_create_confirm": "create_ticket",
+    "ticket_find_open_by_topic": "find_open_ticket"
+  },
+  "runtime": {
+    "samples": 1,
+    "wallMs": {
+      "n": 1,
+      "p50": 14303.0,
+      "p95": 14303.0,
+      "mean": 14303.0,
+      "max": 14303.0
+    },
+    "modelMs": {
+      "n": 1,
+      "p50": 14281.4,
+      "p95": 14281.4,
+      "mean": 14281.4,
+      "max": 14281.4
+    },
+    "toolMs": {
+      "n": 1,
+      "p50": 400.5,
+      "p95": 400.5,
+      "mean": 400.5,
+      "max": 400.5
+    },
+    "waitMs": {
+      "n": 1,
+      "p50": 0.0,
+      "p95": 0.0,
+      "mean": 0.0,
+      "max": 0.0
+    },
+    "residualMs": {
+      "n": 1,
+      "p50": -378.9,
+      "p95": -378.9,
+      "mean": -378.9,
+      "max": -378.9
+    },
+    "rounds": {
+      "n": 1,
+      "p50": 9.0,
+      "p95": 9.0,
+      "mean": 9.0,
+      "max": 9.0
+    },
+    "inputTokens": {
+      "n": 1,
+      "p50": 15616.0,
+      "p95": 15616.0,
+      "mean": 15616.0,
+      "max": 15616.0
+    },
+    "outputTokens": {
+      "n": 1,
+      "p50": 342.0,
+      "p95": 342.0,
+      "mean": 342.0,
+      "max": 342.0
+    },
+    "perToolMs": {
+      "search_knowledge": {
+        "n": 8,
+        "p50": 49.1,
+        "p95": 54.8,
+        "mean": 50.1,
+        "max": 54.8
+      }
+    },
+    "p95Note": "n=1 撑不起 P95（向上最近秩下它取的是第 1 名），只能看形状"
+  },
+  "rows": [
+    {
+      "caseId": "tj-001",
+      "scenario": "knowledge_answered",
+      "repeat": 0,
+      "exit": 2,
+      "sequenceScore": null,
+      "facts": {
+        "tools": [
+          "search_knowledge",
+          "search_knowledge",
+          "search_knowledge",
+          "search_knowledge",
+          "search_knowledge",
+          "search_knowledge",
+          "search_knowledge",
+          "search_knowledge"
+        ],
+        "rounds": 9,
+        "parked": [],
+        "ticketCreated": false
+      },
+      "checks": [
+        {
+          "name": "rounds_within_budget",
+          "ok": false,
+          "fatal": false,
+          "detail": "9 轮 / 上限 2"
+        },
+        {
+          "name": "exceeded_max_iters",
+          "ok": false,
+          "fatal": true,
+          "detail": "框架报 ExceedMaxItersEvent"
+        },
+        {
+          "name": "must_call",
+          "ok": true,
+          "fatal": false,
+          "detail": "search_knowledge"
+        },
+        {
+          "name": "confirm_gate",
+          "ok": true,
+          "fatal": true,
+          "detail": "写操作都走闸"
+        },
+        {
+          "name": "no_unhandled_errors",
+          "ok": false,
+          "fatal": false,
+          "detail": "error 状态的工具：['search_knowledge', 'search_knowledge', 'search_knowledge', 'search_knowledge', 'search_knowledge', 'search_knowledge', 'search_knowledge', 'search_knowledge']"
+        },
+        {
+          "name": "ticket_created",
+          "ok": true,
+          "fatal": false,
+          "detail": "实际=False 期望=False"
+        }
+      ],
+      "judged": [
+        {
+          "grader": "relevance",
+          "score": 2.0,
+          "reason": "回复未直接解决401错误的具体原因，未提供认证失败、令牌过期等核心排查方案，仅泛泛建议检查网络或联系客服，与用户排查突发接口故障的核心需求关联较弱"
+        },
+        {
+          "grader": "correctness",
+          "score": 1.0,
+          "reason": "参考回复为空，系统回复提供了错误信息及解决建议，但因缺乏参考内容无法判断一致性，实际属于偏离参考回复"
+        }
+      ],
+      "trace": {
+        "wallMs": 14303.0,
+        "modelMs": 14281.4,
+        "toolMs": 400.5,
+        "waitMs": 0.0,
+        "residualMs": -378.9,
+        "inputTokens": 15616,
+        "outputTokens": 342,
+        "error": null,
+        "errorKind": ""
+      }
+    }
+  ],
+  "totals": {
+    "runs": 1,
+    "passed": 0,
+    "softFail": 0,
+    "fatalFail": 1
+  },
+  "judge": {
+    "judgeModel": "qwen3:8b",
+    "judgeBase": "http://127.0.0.1:11434/v1",
+    "judgeLanguage": "zh"
+  }
+}

@@ -1,9 +1,40 @@
-# P3 Agent 组装：一句人话走到"有人负责"
+# P3 Agent 组装：一句人话走到"该谁处理"
 
 复现：`make probe-p3`（先离线复现 id 撞车，再跑五个真机场景；
 `.venv/bin/python probes/p3_live_smoke.py [short|intake|dedup|kb|kb_vague]`，只有 `kb` 带退出码断言）、
 `make chat`（同一套接线的交互版）。
-离线断言：`tests/test_agent.py` 25 条，全仓 81 条全过。
+离线断言：`tests/test_agent.py` 30 条，全仓 263 条全过。
+
+> **2026-09-27 业务口径裁决：助手不直接派单。** 落点是"推荐工程师 + 给可上门时段"，
+> 负责人由人在系统外指派。两道封分别在 `runtime/tool_surface.py` 和 `tools.py`：
+> `assign_ticket` 从 `MODEL_VISIBLE_TOOLS` 摘掉，注册处改成 `permission=_DENY`。
+>
+> 为什么必须两道：**白名单筛的是"递给模型什么 schema"，拦不住模型凭训练记忆喊出的同名调用** ——
+> 函数还注册着就照样执行。而工具自述的 DENY 是框架里唯一与 `permission_mode` 无关的闸
+> （`permission/_engine.py:406` 写明连 BYPASS 都只留"用户 deny 规则 + 工具 DENY"，
+> `_engine.py:459-473` 把工具 DENY 原样返回），被拒时落一条 `state=denied` 的 tool_result
+> （`_agent.py:2582`），正文就是 `_DENY.message`：拒绝的同时把"该改做什么"递回上下文。
+> 两道闸各有一条测试钉着：`test_注册但不递交的业务件被这道闸摘掉`、
+> `test_不递交的工具必须同时被权限闸封住`、`test_model_side_assignment_is_denied_and_leaves_ticket_unassigned`。
+>
+> 指派能力本身没删：`TicketStore.assign` 的在职闸、越选记账、指派后回写历史集都还长在
+> `assign_ticket` 这条工具函数上，系统内入口用 `FunctionTool.call()` 直接调（`call` 不经权限闸），
+> 评测的 45 条指派盲标与 `dispatch.assignment_prompt` 那条离线轴都不受影响。
+> 连带改的是 console 收尾摘要 `app.py:_summary`：禁令之后每张单落库时 `assignee_id` 都是 None，
+> 而 `domain.py:135` 里这个 None 专指"人显式转了人工"，两种 None 不能混着报 ——
+> 摘要改读指派账（`store.assignments`），没账的读"未指派（由人落）"，只有 ESCALATE 那条才读"转人工待认领"。
+> 下面那张五个场景的表是禁令**之前**的实跑读数，里面的 `assignee=1xx` 是当时模型自己派的结果。
+>
+> **2026-09-27 二次裁决：推荐多个候选 + 对话内闭环落指派。** 上一版"只推荐、人在系统外指派"
+> 落地当天又推翻了一半：推荐不该只给一个人，用户选完也不该再回到系统外去落。现在
+> `assign_ticket` 回到 `permission=_ASK`、重新进 `MODEL_VISIBLE_TOOLS`（`MODEL_INVISIBLE_TOOLS`
+> 清空），提示词第 6 步改成"推荐 2-3 个候选（owner + backup + 语义候选里最贴的 1-2 个，
+> 各带一句理由），用户选定后再调 assign_ticket（走确认闸）"。`assign_ticket` 计入
+> `eval/runtime.CONFIRM_TOOLS`；轨迹金标升到 version 5，21 条的 `forbiddenTools` 摘掉
+> assign_ticket —— 建单类用例因此没了禁用项，`--sabotage` 对它们的注入退化成"抽掉金标第一步"
+> （软阈值响），mustNotCall 红线的端到端验证改由知识问答/寒暄类用例承担。
+> 对应测试：`test_assignment_parks_for_confirmation` 取代了
+> `test_model_side_assignment_is_denied_and_leaves_ticket_unassigned`。
 
 ## 五个场景的实跑（真机 qwen3:8b temp=0 + bge-m3 dense）
 

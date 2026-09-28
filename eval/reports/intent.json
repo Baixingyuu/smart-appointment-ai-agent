@@ -1,0 +1,1500 @@
+{
+  "mode": "live",
+  "dataset": "intent.json",
+  "metrics": {
+    "accuracy": 0.9444,
+    "n": 180,
+    "perLabel": {
+      "chitchat": {
+        "precision": 0.9091,
+        "recall": 1.0,
+        "gold": 30,
+        "pred": 33,
+        "correct": 30
+      },
+      "knowledge": {
+        "precision": 0.9615,
+        "recall": 0.9091,
+        "gold": 55,
+        "pred": 52,
+        "correct": 50
+      },
+      "incident": {
+        "precision": 0.9348,
+        "recall": 0.9556,
+        "gold": 45,
+        "pred": 46,
+        "correct": 43
+      },
+      "handoff": {
+        "precision": 0.9259,
+        "recall": 1.0,
+        "gold": 25,
+        "pred": 27,
+        "correct": 25
+      },
+      "out_of_scope": {
+        "precision": 1.0,
+        "recall": 0.88,
+        "gold": 25,
+        "pred": 22,
+        "correct": 22
+      }
+    }
+  },
+  "checks": [
+    {
+      "name": "incident_recall",
+      "ok": true,
+      "fatal": false,
+      "detail": "incident 召回 95.6%，低于 90% 会漏建单"
+    }
+  ],
+  "rows": [
+    {
+      "id": "in-001",
+      "text": "工单一般多久能处理完",
+      "gold": "knowledge",
+      "pred": "incident",
+      "confidence": 0.95,
+      "ok": false
+    },
+    {
+      "id": "in-002",
+      "text": "推送失败的回执在哪查",
+      "gold": "knowledge",
+      "pred": "knowledge",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-003",
+      "text": "有人工吗，我要找真人",
+      "gold": "handoff",
+      "pred": "handoff",
+      "confidence": 1.0,
+      "ok": true
+    },
+    {
+      "id": "in-004",
+      "text": "转人工，接口401的事我得跟人聊",
+      "gold": "handoff",
+      "pred": "handoff",
+      "confidence": 1.0,
+      "ok": true
+    },
+    {
+      "id": "in-005",
+      "text": "权限突然没了，订单列表都看不了",
+      "gold": "incident",
+      "pred": "incident",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-006",
+      "text": "我要找客服，人工的那种",
+      "gold": "handoff",
+      "pred": "handoff",
+      "confidence": 1.0,
+      "ok": true
+    },
+    {
+      "id": "in-007",
+      "text": "帮我算下房贷月供是多少",
+      "gold": "out_of_scope",
+      "pred": "out_of_scope",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-008",
+      "text": "接口返回的数据缺字段，前端已经炸了",
+      "gold": "incident",
+      "pred": "incident",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-009",
+      "text": "给我转人工，不然我要发火了",
+      "gold": "handoff",
+      "pred": "handoff",
+      "confidence": 1.0,
+      "ok": true
+    },
+    {
+      "id": "in-010",
+      "text": "帮我订个明天下午的会议室",
+      "gold": "out_of_scope",
+      "pred": "out_of_scope",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-011",
+      "text": "导出最多支持多少行",
+      "gold": "knowledge",
+      "pred": "knowledge",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-012",
+      "text": "网关502，整个集群都访问不了",
+      "gold": "incident",
+      "pred": "incident",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-013",
+      "text": "这个问题太复杂，帮我转人工吧",
+      "gold": "handoff",
+      "pred": "handoff",
+      "confidence": 1.0,
+      "ok": true
+    },
+    {
+      "id": "in-014",
+      "text": "LDAP账号被锁的解锁流程是啥",
+      "gold": "knowledge",
+      "pred": "knowledge",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-015",
+      "text": "发布回滚的正确操作步骤是啥",
+      "gold": "knowledge",
+      "pred": "knowledge",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-016",
+      "text": "token过期导致的401要怎么处理，有文档吗",
+      "gold": "knowledge",
+      "pred": "knowledge",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-017",
+      "text": "嗯嗯，收到",
+      "gold": "chitchat",
+      "pred": "chitchat",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-018",
+      "text": "帮我建个工单",
+      "gold": "incident",
+      "pred": "incident",
+      "confidence": 1.0,
+      "ok": true
+    },
+    {
+      "id": "in-019",
+      "text": "免费版和付费版功能差异在哪",
+      "gold": "knowledge",
+      "pred": "knowledge",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-020",
+      "text": "我们这边页面全白屏了，赶紧看下",
+      "gold": "incident",
+      "pred": "incident",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-021",
+      "text": "帮我写周报，随便编点",
+      "gold": "out_of_scope",
+      "pred": "out_of_scope",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-022",
+      "text": "证书链不全导致的报错怎么修",
+      "gold": "knowledge",
+      "pred": "knowledge",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-023",
+      "text": "监控一直在告警，磁盘已经90%了",
+      "gold": "incident",
+      "pred": "incident",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-024",
+      "text": "我随便看看，没事",
+      "gold": "chitchat",
+      "pred": "chitchat",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-025",
+      "text": "帮我把这个问题提单给研发",
+      "gold": "incident",
+      "pred": "incident",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-026",
+      "text": "工单的SLA是怎么规定的",
+      "gold": "knowledge",
+      "pred": "knowledge",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-027",
+      "text": "报表导出超时是怎么回事",
+      "gold": "knowledge",
+      "pred": "knowledge",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-028",
+      "text": "webhook回调地址怎么配",
+      "gold": "knowledge",
+      "pred": "knowledge",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-029",
+      "text": "连续输错几次密码会锁号，锁多久",
+      "gold": "knowledge",
+      "pred": "knowledge",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-030",
+      "text": "我要转人工，我的账号被锁了",
+      "gold": "handoff",
+      "pred": "handoff",
+      "confidence": 1.0,
+      "ok": true
+    },
+    {
+      "id": "in-031",
+      "text": "redis内存爆了，服务开始各种报错",
+      "gold": "incident",
+      "pred": "incident",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-032",
+      "text": "帮我翻译一段英文",
+      "gold": "out_of_scope",
+      "pred": "out_of_scope",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-033",
+      "text": "行，那就先这样吧",
+      "gold": "chitchat",
+      "pred": "chitchat",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-034",
+      "text": "早啊，今天来得挺早",
+      "gold": "chitchat",
+      "pred": "chitchat",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-035",
+      "text": "辛苦辛苦，这么晚还没下班",
+      "gold": "chitchat",
+      "pred": "chitchat",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-036",
+      "text": "明天北京天气怎么样",
+      "gold": "out_of_scope",
+      "pred": "chitchat",
+      "confidence": 0.95,
+      "ok": false
+    },
+    {
+      "id": "in-037",
+      "text": "帮我把这段话改成小红书风格",
+      "gold": "out_of_scope",
+      "pred": "out_of_scope",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-038",
+      "text": "让真人联系我，电话或在线都行",
+      "gold": "handoff",
+      "pred": "handoff",
+      "confidence": 1.0,
+      "ok": true
+    },
+    {
+      "id": "in-039",
+      "text": "报表导出一直失败，三个人月报都做不了",
+      "gold": "incident",
+      "pred": "incident",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-040",
+      "text": "发票怎么开，走什么流程",
+      "gold": "knowledge",
+      "pred": "knowledge",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-041",
+      "text": "收不到密码重置邮件，试了三次都没有",
+      "gold": "incident",
+      "pred": "incident",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-042",
+      "text": "今天股市涨了没",
+      "gold": "out_of_scope",
+      "pred": "out_of_scope",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-043",
+      "text": "帮我把这段中文翻成日语",
+      "gold": "out_of_scope",
+      "pred": "out_of_scope",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-044",
+      "text": "我要跟真人说话",
+      "gold": "handoff",
+      "pred": "handoff",
+      "confidence": 1.0,
+      "ok": true
+    },
+    {
+      "id": "in-045",
+      "text": "这个功能支持批量操作吗",
+      "gold": "knowledge",
+      "pred": "knowledge",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-046",
+      "text": "401和403到底有啥区别，一直分不清",
+      "gold": "knowledge",
+      "pred": "knowledge",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-047",
+      "text": "推送一条都发不出去，帮忙看下",
+      "gold": "incident",
+      "pred": "incident",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-048",
+      "text": "好的，多谢",
+      "gold": "chitchat",
+      "pred": "chitchat",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-049",
+      "text": "嗯，知道了，谢谢",
+      "gold": "chitchat",
+      "pred": "chitchat",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-050",
+      "text": "灰度发布的配置怎么写，给个示例",
+      "gold": "knowledge",
+      "pred": "knowledge",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-051",
+      "text": "请人工介入",
+      "gold": "handoff",
+      "pred": "handoff",
+      "confidence": 1.0,
+      "ok": true
+    },
+    {
+      "id": "in-052",
+      "text": "给我讲讲罗马帝国是怎么灭亡的",
+      "gold": "out_of_scope",
+      "pred": "out_of_scope",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-053",
+      "text": "哈喽，早上好呀",
+      "gold": "chitchat",
+      "pred": "chitchat",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-054",
+      "text": "我需要人工支持",
+      "gold": "handoff",
+      "pred": "handoff",
+      "confidence": 1.0,
+      "ok": true
+    },
+    {
+      "id": "in-055",
+      "text": "升级之后老功能全都用不了了",
+      "gold": "incident",
+      "pred": "incident",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-056",
+      "text": "cron表达式怎么写每小时执行一次",
+      "gold": "knowledge",
+      "pred": "knowledge",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-057",
+      "text": "给我接个真人，你们机器人答非所问",
+      "gold": "handoff",
+      "pred": "handoff",
+      "confidence": 1.0,
+      "ok": true
+    },
+    {
+      "id": "in-058",
+      "text": "帮我选个笔记本，哪个牌子好",
+      "gold": "out_of_scope",
+      "pred": "out_of_scope",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-059",
+      "text": "拜拜，我先下了",
+      "gold": "chitchat",
+      "pred": "chitchat",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-060",
+      "text": "你叫啥名字呀",
+      "gold": "chitchat",
+      "pred": "chitchat",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-061",
+      "text": "人工客服电话是多少",
+      "gold": "knowledge",
+      "pred": "handoff",
+      "confidence": 1.0,
+      "ok": false
+    },
+    {
+      "id": "in-062",
+      "text": "欠费之后服务会停多久",
+      "gold": "knowledge",
+      "pred": "knowledge",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-063",
+      "text": "库存扣成负数了，这应该是bug吧",
+      "gold": "incident",
+      "pred": "knowledge",
+      "confidence": 0.95,
+      "ok": false
+    },
+    {
+      "id": "in-064",
+      "text": "权限审批一般要几天",
+      "gold": "knowledge",
+      "pred": "knowledge",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-065",
+      "text": "嗯嗯嗯，明白了",
+      "gold": "chitchat",
+      "pred": "chitchat",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-066",
+      "text": "红烧肉怎么做才好吃",
+      "gold": "out_of_scope",
+      "pred": "knowledge",
+      "confidence": 0.95,
+      "ok": false
+    },
+    {
+      "id": "in-067",
+      "text": "线上订单创建失败，客户一直在催",
+      "gold": "incident",
+      "pred": "incident",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-068",
+      "text": "我们线上崩了，所有客户都在投诉，麻烦尽快安排处理",
+      "gold": "incident",
+      "pred": "incident",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-069",
+      "text": "别机器人了，来个人",
+      "gold": "handoff",
+      "pred": "handoff",
+      "confidence": 1.0,
+      "ok": true
+    },
+    {
+      "id": "in-070",
+      "text": "定时任务重复执行了两次，数据重复了",
+      "gold": "incident",
+      "pred": "incident",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-071",
+      "text": "数据库连接池满了怎么调",
+      "gold": "knowledge",
+      "pred": "knowledge",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-072",
+      "text": "机器人没用，给我接人",
+      "gold": "handoff",
+      "pred": "handoff",
+      "confidence": 1.0,
+      "ok": true
+    },
+    {
+      "id": "in-073",
+      "text": "你们这个机器人还挺有意思的，比我们公司那个强多了",
+      "gold": "chitchat",
+      "pred": "chitchat",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-074",
+      "text": "我的账号被锁了，进不去后台",
+      "gold": "incident",
+      "pred": "incident",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-075",
+      "text": "好嘞，麻烦你了",
+      "gold": "chitchat",
+      "pred": "chitchat",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-076",
+      "text": "在哪能自查账号有没有被锁",
+      "gold": "knowledge",
+      "pred": "knowledge",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-077",
+      "text": "服务器cpu打满了，麻烦尽快处理",
+      "gold": "incident",
+      "pred": "incident",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-078",
+      "text": "早上起来发现定时任务没跑，数据没同步",
+      "gold": "incident",
+      "pred": "incident",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-079",
+      "text": "直接转人工吧，别分析了",
+      "gold": "handoff",
+      "pred": "handoff",
+      "confidence": 1.0,
+      "ok": true
+    },
+    {
+      "id": "in-080",
+      "text": "k8s里健康检查探针怎么配",
+      "gold": "knowledge",
+      "pred": "knowledge",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-081",
+      "text": "接口返回401是什么原因",
+      "gold": "knowledge",
+      "pred": "knowledge",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-082",
+      "text": "ssl证书快到期了怎么换",
+      "gold": "knowledge",
+      "pred": "knowledge",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-083",
+      "text": "你是机器人还是真人啊",
+      "gold": "chitchat",
+      "pred": "chitchat",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-084",
+      "text": "老师辛苦了，晚上好",
+      "gold": "chitchat",
+      "pred": "chitchat",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-085",
+      "text": "帮我开个P1的单子，影响面很大",
+      "gold": "incident",
+      "pred": "incident",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-086",
+      "text": "麻烦转接人工，我这个情况描述起来太复杂，机器人一直理解错",
+      "gold": "handoff",
+      "pred": "handoff",
+      "confidence": 1.0,
+      "ok": true
+    },
+    {
+      "id": "in-087",
+      "text": "你说得对，哈哈哈",
+      "gold": "chitchat",
+      "pred": "chitchat",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-088",
+      "text": "调用你们openapi老是报401，一般咋排查",
+      "gold": "knowledge",
+      "pred": "knowledge",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-089",
+      "text": "人工客服在吗，直接转过去吧",
+      "gold": "handoff",
+      "pred": "handoff",
+      "confidence": 1.0,
+      "ok": true
+    },
+    {
+      "id": "in-090",
+      "text": "短信验证码收不到，用户注册不了",
+      "gold": "incident",
+      "pred": "incident",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-091",
+      "text": "慢查询日志怎么开",
+      "gold": "knowledge",
+      "pred": "knowledge",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-092",
+      "text": "怎么申请数据库只读权限",
+      "gold": "knowledge",
+      "pred": "knowledge",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-093",
+      "text": "先不聊了，我去开会了",
+      "gold": "chitchat",
+      "pred": "chitchat",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-094",
+      "text": "日志占满磁盘，轮转策略一般怎么配",
+      "gold": "knowledge",
+      "pred": "knowledge",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-095",
+      "text": "推荐个附近的餐厅呗",
+      "gold": "out_of_scope",
+      "pred": "out_of_scope",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-096",
+      "text": "报表时间范围能自定义吗",
+      "gold": "knowledge",
+      "pred": "knowledge",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-097",
+      "text": "帮我写一首关于秋天的诗",
+      "gold": "out_of_scope",
+      "pred": "out_of_scope",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-098",
+      "text": "从昨晚十点开始消息队列一直堆积，消费者完全不动，重启也没用",
+      "gold": "incident",
+      "pred": "incident",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-099",
+      "text": "找个人来对接，机器人解决不了",
+      "gold": "handoff",
+      "pred": "handoff",
+      "confidence": 1.0,
+      "ok": true
+    },
+    {
+      "id": "in-100",
+      "text": "别让我再问机器人了，转人工处理",
+      "gold": "handoff",
+      "pred": "handoff",
+      "confidence": 1.0,
+      "ok": true
+    },
+    {
+      "id": "in-101",
+      "text": "感谢，问题解决了，太顶了",
+      "gold": "chitchat",
+      "pred": "chitchat",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-102",
+      "text": "手机app一打开就闪退，完全没法用",
+      "gold": "incident",
+      "pred": "incident",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-103",
+      "text": "页面报502，帮我记个工单吧",
+      "gold": "incident",
+      "pred": "incident",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-104",
+      "text": "转人工客服，急",
+      "gold": "handoff",
+      "pred": "handoff",
+      "confidence": 1.0,
+      "ok": true
+    },
+    {
+      "id": "in-105",
+      "text": "帮我规划下周末带娃去哪玩，两天时间，别太累的",
+      "gold": "out_of_scope",
+      "pred": "out_of_scope",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-106",
+      "text": "怎么查自己有哪些系统的权限",
+      "gold": "knowledge",
+      "pred": "knowledge",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-107",
+      "text": "在么在么，有人在么",
+      "gold": "chitchat",
+      "pred": "chitchat",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-108",
+      "text": "麻烦登记一下，生产环境偶发超时",
+      "gold": "incident",
+      "pred": "incident",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-109",
+      "text": "P1和P2故障的响应时间分别是多少",
+      "gold": "knowledge",
+      "pred": "knowledge",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-110",
+      "text": "为什么我的账号突然登不上了，是被锁了还是密码错",
+      "gold": "knowledge",
+      "pred": "incident",
+      "confidence": 0.95,
+      "ok": false
+    },
+    {
+      "id": "in-111",
+      "text": "批量导入十万条直接超时中断了",
+      "gold": "incident",
+      "pred": "incident",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-112",
+      "text": "这个bug一直没修，帮我再提一个单",
+      "gold": "incident",
+      "pred": "incident",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-113",
+      "text": "https证书过期了，访问一直报错，赶紧换",
+      "gold": "incident",
+      "pred": "incident",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-114",
+      "text": "推送重试次数怎么配置",
+      "gold": "knowledge",
+      "pred": "knowledge",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-115",
+      "text": "转真人客服",
+      "gold": "handoff",
+      "pred": "handoff",
+      "confidence": 1.0,
+      "ok": true
+    },
+    {
+      "id": "in-116",
+      "text": "推荐个减肥食谱",
+      "gold": "out_of_scope",
+      "pred": "out_of_scope",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-117",
+      "text": "审计日志保留多久，在哪导出",
+      "gold": "knowledge",
+      "pred": "knowledge",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-118",
+      "text": "我要投诉，转人工",
+      "gold": "handoff",
+      "pred": "handoff",
+      "confidence": 1.0,
+      "ok": true
+    },
+    {
+      "id": "in-119",
+      "text": "中午吃啥好呢，纠结",
+      "gold": "chitchat",
+      "pred": "chitchat",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-120",
+      "text": "能不能给我转真人，不想跟你扯了",
+      "gold": "handoff",
+      "pred": "handoff",
+      "confidence": 1.0,
+      "ok": true
+    },
+    {
+      "id": "in-121",
+      "text": "最近三天每天下午都卡顿，帮我报个障",
+      "gold": "incident",
+      "pred": "incident",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-122",
+      "text": "服务器磁盘满了要怎么清理，有标准步骤吗",
+      "gold": "knowledge",
+      "pred": "knowledge",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-123",
+      "text": "这个问题人工能解决吗",
+      "gold": "knowledge",
+      "pred": "handoff",
+      "confidence": 0.95,
+      "ok": false
+    },
+    {
+      "id": "in-124",
+      "text": "怎么看某个订单的调用链日志",
+      "gold": "knowledge",
+      "pred": "knowledge",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-125",
+      "text": "在吗，想问点事",
+      "gold": "chitchat",
+      "pred": "chitchat",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-126",
+      "text": "帮我起个宝宝的名字",
+      "gold": "out_of_scope",
+      "pred": "out_of_scope",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-127",
+      "text": "哈哈，好的好的",
+      "gold": "chitchat",
+      "pred": "chitchat",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-128",
+      "text": "任务失败后重跑的正确姿势是啥",
+      "gold": "knowledge",
+      "pred": "knowledge",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-129",
+      "text": "我们租户的数据查不到了，很严重",
+      "gold": "incident",
+      "pred": "incident",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-130",
+      "text": "1+1等于几呀",
+      "gold": "out_of_scope",
+      "pred": "out_of_scope",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-131",
+      "text": "系统打不开了，急",
+      "gold": "incident",
+      "pred": "incident",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-132",
+      "text": "节日快乐哈",
+      "gold": "chitchat",
+      "pred": "chitchat",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-133",
+      "text": "我要找人工",
+      "gold": "handoff",
+      "pred": "handoff",
+      "confidence": 1.0,
+      "ok": true
+    },
+    {
+      "id": "in-134",
+      "text": "周末愉快～",
+      "gold": "chitchat",
+      "pred": "chitchat",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-135",
+      "text": "app闪退怎么抓日志给研发",
+      "gold": "knowledge",
+      "pred": "incident",
+      "confidence": 0.95,
+      "ok": false
+    },
+    {
+      "id": "in-136",
+      "text": "客户端版本号在哪看",
+      "gold": "knowledge",
+      "pred": "knowledge",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-137",
+      "text": "日志里全是空指针，线上一直在报",
+      "gold": "incident",
+      "pred": "incident",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-138",
+      "text": "多谢多谢，帮大忙了",
+      "gold": "chitchat",
+      "pred": "chitchat",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-139",
+      "text": "怎么重置密码",
+      "gold": "knowledge",
+      "pred": "knowledge",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-140",
+      "text": "沙箱环境和正式环境有啥区别",
+      "gold": "knowledge",
+      "pred": "knowledge",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-141",
+      "text": "服务响应特别慢，一个接口要等十几秒",
+      "gold": "incident",
+      "pred": "incident",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-142",
+      "text": "推荐一本学Python的书",
+      "gold": "out_of_scope",
+      "pred": "out_of_scope",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-143",
+      "text": "主从延迟怎么监控和排查",
+      "gold": "knowledge",
+      "pred": "knowledge",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-144",
+      "text": "帮我写封辞职信",
+      "gold": "out_of_scope",
+      "pred": "out_of_scope",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-145",
+      "text": "配置中心推不下去，改了配置没生效",
+      "gold": "incident",
+      "pred": "incident",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-146",
+      "text": "帮我写个年终总结",
+      "gold": "out_of_scope",
+      "pred": "out_of_scope",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-147",
+      "text": "谢谢啦，辛苦了",
+      "gold": "chitchat",
+      "pred": "chitchat",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-148",
+      "text": "先别转人工，帮我把这个故障登记一下",
+      "gold": "incident",
+      "pred": "incident",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-149",
+      "text": "df -h看到根分区100%，排查思路是啥",
+      "gold": "knowledge",
+      "pred": "knowledge",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-150",
+      "text": "消息推送延迟高一般是什么原因",
+      "gold": "knowledge",
+      "pred": "knowledge",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-151",
+      "text": "部署到预发环境直接失败了，卡在拉镜像",
+      "gold": "incident",
+      "pred": "incident",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-152",
+      "text": "定时任务没执行要怎么排查",
+      "gold": "knowledge",
+      "pred": "knowledge",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-153",
+      "text": "数据库连不上了，业务全停了",
+      "gold": "incident",
+      "pred": "incident",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-154",
+      "text": "帮我算一下这个方程2x+5=13",
+      "gold": "out_of_scope",
+      "pred": "out_of_scope",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-155",
+      "text": "多谢，改天请你喝奶茶",
+      "gold": "chitchat",
+      "pred": "chitchat",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-156",
+      "text": "今天天气不错啊，适合摸鱼",
+      "gold": "chitchat",
+      "pred": "chitchat",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-157",
+      "text": "你好，在吗",
+      "gold": "chitchat",
+      "pred": "chitchat",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-158",
+      "text": "我们有开发测试预发三套环境，配置文件老是互相覆盖，一般怎么管理比较好",
+      "gold": "knowledge",
+      "pred": "knowledge",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-159",
+      "text": "磁盘满了导致写入失败，麻烦处理一下",
+      "gold": "incident",
+      "pred": "incident",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-160",
+      "text": "客户端登录不上，提示网络异常，但网是好的",
+      "gold": "incident",
+      "pred": "incident",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-161",
+      "text": "帮我给女朋友写个道歉信",
+      "gold": "out_of_scope",
+      "pred": "out_of_scope",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-162",
+      "text": "有没有工具能自检证书配置",
+      "gold": "knowledge",
+      "pred": "knowledge",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-163",
+      "text": "推荐几部好看的电影",
+      "gold": "out_of_scope",
+      "pred": "out_of_scope",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-164",
+      "text": "同一条通知给我推了十几遍，很烦",
+      "gold": "incident",
+      "pred": "chitchat",
+      "confidence": 0.95,
+      "ok": false
+    },
+    {
+      "id": "in-165",
+      "text": "我的账号被锁了怎么办",
+      "gold": "knowledge",
+      "pred": "knowledge",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-166",
+      "text": "有人吗，出来聊两句",
+      "gold": "chitchat",
+      "pred": "chitchat",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-167",
+      "text": "有没有API限流的说明文档",
+      "gold": "knowledge",
+      "pred": "knowledge",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-168",
+      "text": "上传附件一直转圈，最后直接失败",
+      "gold": "incident",
+      "pred": "incident",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-169",
+      "text": "转人工吧！",
+      "gold": "handoff",
+      "pred": "handoff",
+      "confidence": 1.0,
+      "ok": true
+    },
+    {
+      "id": "in-170",
+      "text": "账单里的调用量是怎么算的",
+      "gold": "knowledge",
+      "pred": "knowledge",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-171",
+      "text": "密码重置链接有效期是多久",
+      "gold": "knowledge",
+      "pred": "knowledge",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-172",
+      "text": "接口一直返回401，严重影响线上，帮我报障",
+      "gold": "incident",
+      "pred": "incident",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-173",
+      "text": "帮我转一下人工客服，谢谢",
+      "gold": "handoff",
+      "pred": "handoff",
+      "confidence": 1.0,
+      "ok": true
+    },
+    {
+      "id": "in-174",
+      "text": "文件下载下来全是0kb，都是坏文件",
+      "gold": "incident",
+      "pred": "incident",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-175",
+      "text": "讲个笑话吧",
+      "gold": "out_of_scope",
+      "pred": "chitchat",
+      "confidence": 0.95,
+      "ok": false
+    },
+    {
+      "id": "in-176",
+      "text": "用户名下多了一堆别人的订单，数据串了",
+      "gold": "incident",
+      "pred": "incident",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-177",
+      "text": "旧版本客户端什么时候停止支持",
+      "gold": "knowledge",
+      "pred": "knowledge",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-178",
+      "text": "帮我编个请假的理由",
+      "gold": "out_of_scope",
+      "pred": "out_of_scope",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-179",
+      "text": "测试环境数据库被清空了，需要恢复",
+      "gold": "incident",
+      "pred": "incident",
+      "confidence": 0.95,
+      "ok": true
+    },
+    {
+      "id": "in-180",
+      "text": "日志级别怎么临时改成debug",
+      "gold": "knowledge",
+      "pred": "knowledge",
+      "confidence": 0.95,
+      "ok": true
+    }
+  ],
+  "generatedAt": "2026-09-27T16:38:34+00:00",
+  "embedModel": "bge-m3",
+  "chatModel": "qwen3:8b",
+  "sabotage": [],
+  "axis": "intent"
+}

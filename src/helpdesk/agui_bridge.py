@@ -24,7 +24,7 @@ import json
 import logging
 import os
 from dataclasses import dataclass, field
-from typing import Any, AsyncGenerator
+from typing import Any, AsyncGenerator, Awaitable, Callable
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request
@@ -98,12 +98,22 @@ class AguiBridge:
         system_prompt: str,
         model: str,
         max_iters: int,
+        context_config: dict,
         name: str = "helpdesk",
+        on_ready: Callable[["AguiBridge"], Awaitable[None]] | None = None,
     ) -> None:
         self._name = name
+        #: 桥是这套服务里唯一知道 `agent_id`/`credential_id` 的地方（那两个号是它
+        #: 回环 POST 出来的），所以"agent 就绪后要做的事"只能从这里挂出去 ——
+        #: AutoDream 的 cron 必须写在 agent 名下。桥不替回调吞异常，也不决定它失败
+        #: 之后怎么办：挂进来的那一侧（`service.py`）自己记账，别把后台任务的失败
+        #: 变成用户的对话挂掉。
+        self._on_ready = on_ready
         self._system_prompt = system_prompt
         self._model = model
         self._max_iters = max_iters
+        #: 阈值只有一份，放在 agent_factory；桥只负责把它塞进建 agent 的请求。
+        self._context_config = context_config
         self._client = httpx.AsyncClient(
             base_url=base_url,
             headers={"X-User-ID": user_id},
@@ -130,6 +140,10 @@ class AguiBridge:
 
         两名制：POST 的响应给 `credential_id`/`agent_id`，GET 列表里的记录叫 `id`，
         而 name/type 这些字段藏在记录的 `data` 里 —— 都按 `data` 优先读。
+
+        已存在的 agent 只读不写：改了 `SYSTEM_PROMPT` 要重建 agent 行才生效。
+        `on_ready` 在所有赋值之后才调 —— 调度注册跟着的是"桥第一次就绪"而不是进程启动，
+        也就是第一次有人打开对话时才落 cron（登记幂等）。
         """
         rows = (await self._get("/credential/")).json().get("credentials", [])
         own = next(
@@ -156,13 +170,40 @@ class AguiBridge:
                     "name": self._name,
                     "system_prompt": self._system_prompt,
                     "react_config": {"max_iters": self._max_iters},
-                    "context_config": {"trigger_ratio": 0.8, "tool_result_limit": 1500},
+                    "context_config": self._context_config,
                 },
             )
             r.raise_for_status()
             agent = r.json()
         self._agent_id = _row_id(agent, "agent_id")
         logger.info("AG-UI 桥就绪 credential=%s agent=%s", self._credential_id, self._agent_id)
+        if self._on_ready is not None:
+            await self._on_ready(self)
+
+    @property
+    def agent_id(self) -> str:
+        """`on_ready` 回调里读它是安全的 —— 那个点在两个 id 都赋完值之后。"""
+        assert self._agent_id is not None, "桥还没 start()"
+        return self._agent_id
+
+    @property
+    def credential_id(self) -> str:
+        assert self._credential_id is not None, "桥还没 start()"
+        return self._credential_id
+
+    @property
+    def chat_model_config(self) -> dict[str, Any]:
+        """建 session 用的那份模型配置，调度任务也带同一份 —— 两处必须是一个答案。
+
+        调度记录只能携带 `chat_model_config` 这一个入口来决定"这一轮用哪个模型跑"，
+        所以后台整理跟前台对话跑在同一个模型、同一组参数（temp=0、关思考）上。
+        """
+        return {
+            "type": "ollama_credential",
+            "credential_id": self.credential_id,
+            "model": self._model,
+            "parameters": {"temperature": 0.0, "thinking_enable": False},
+        }
 
     async def aclose(self) -> None:
         for thread in self._threads.values():
@@ -206,12 +247,7 @@ class AguiBridge:
                     json={
                         "agent_id": self._agent_id,
                         "name": name,
-                        "chat_model_config": {
-                            "type": "ollama_credential",
-                            "credential_id": self._credential_id,
-                            "model": self._model,
-                            "parameters": {"temperature": 0.0, "thinking_enable": False},
-                        },
+                        "chat_model_config": self.chat_model_config,
                     },
                 )
                 r.raise_for_status()
@@ -418,10 +454,25 @@ class AguiBridge:
                 if parked is None:
                     continue
                 reply_id = parked["reply_id"]
+                tool_call = confirmable_tool_call(parked["tool_call"])
+                # 推荐卡片：用户点选结果在 payload 里，回填进 tool_call.input.selection，
+                # 后端 suggest_assignment 凭它落指派 + 预约。
+                payload = entry.get("payload")
+                if payload:
+                    raw_input = tool_call.get("input")
+                    if isinstance(raw_input, dict):
+                        raw_input["selection"] = payload
+                    elif isinstance(raw_input, str):
+                        try:
+                            parsed = json.loads(raw_input)
+                            parsed["selection"] = payload
+                            tool_call["input"] = parsed
+                        except (json.JSONDecodeError, TypeError):
+                            pass
                 results.append(
                     {
                         "confirmed": entry.get("status") != "cancelled",
-                        "tool_call": confirmable_tool_call(parked["tool_call"]),
+                        "tool_call": tool_call,
                         "rules": None,
                     },
                 )
@@ -474,15 +525,28 @@ def _interrupts(pending: dict[str, dict]) -> list[dict]:
     out = []
     for interrupt_id, parked in pending.items():
         call = parked["tool_call"]
-        out.append(
-            {
-                "id": interrupt_id,
-                "reason": "tool_call",
-                "message": f"是否执行 {call['name']}？",
-                "toolCallId": call["id"],
-                "metadata": {"toolName": call["name"], "args": call.get("input")},
-            },
-        )
+        item = {
+            "id": interrupt_id,
+            "reason": "tool_call",
+            "message": f"是否执行 {call['name']}？",
+            "toolCallId": call["id"],
+            "metadata": {"toolName": call["name"], "args": call.get("input")},
+        }
+        # 推荐卡片：告诉前端这张卡要用户点选工程师（可选时段），前端把选择放进
+        # resume entry 的 payload 回传（`_trigger_body` 会读出来回填 selection）。
+        if call.get("name") == "suggest_assignment":
+            item["responseSchema"] = {
+                "type": "object",
+                "properties": {
+                    "engineer_id": {"type": "string", "description": "用户选定的员工号"},
+                    "time_slot": {
+                        "type": ["string", "null"],
+                        "description": "用户选定的上门时段，没选为 null",
+                    },
+                },
+                "required": ["engineer_id"],
+            }
+        out.append(item)
     return out
 
 

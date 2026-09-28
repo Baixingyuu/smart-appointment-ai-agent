@@ -6,6 +6,9 @@ requires-python = ">=3.11"
 dependencies = [
     "agentscope[ollama,rag,milvuslite,sql,service]>=2.0.8,<2.1",
     "aiosqlite>=0.22.1",
+    # 判分层：`eval/judge.py` 用它的 grader。轨迹分（ToolCallStepSequenceMatch）是纯规则、
+    # 不联网；LLM 评委那几维才需要 ollama 的 OpenAI 兼容端点。
+    "py-openjudge>=0.2.4,<0.3",
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
 ]

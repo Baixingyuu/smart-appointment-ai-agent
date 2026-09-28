@@ -3,7 +3,8 @@
 复现：`make probe-p5`（A+B：离线账面 + 框架原生 HITL）、`make probe-p5-agui`（A+C：只走前端看到的那一个端点）、
 `make serve ARGS="--port 8011 --keep-index"` + `make web`（浏览器实跑）。
 A 段加 `--offline` 不起模型；B、C 互斥，各花一次真机钱。
-离线断言：`tests/test_agui_bridge.py` 10 条，全仓 95 条全过。
+离线断言：`tests/test_agui_bridge.py` 10 条、全仓 95 条全过 —— 这是 P5 收尾时的账面，
+2026-09-27 核过已涨到 12 条 / 全仓 263 条。
 
 ## 形状对不上，所以有一层桥
 
@@ -38,6 +39,18 @@ park/唤醒是框架的原生能力，不需要我重新实现一遍。C 段再�
 ✓ C3 落库 #1 incident/P0 指派=101 缺=无
 · C 段工具序列：['find_open_ticket','match_service','ask_user','create_ticket','match_service','assign_ticket']
 ```
+
+**2026-09-27 重跑（"助手不直接派单"之后的两条新判据）**：B 段全绿，
+`✓ B5 落库 #1，未指派（指派由人在系统外做）`、`· B6 真机工具调用序列：['create_ticket','match_service']`；
+禁令在托管路径上是真的守住了（B、C 两段的序列里都没有 `assign_ticket`）。
+**2026-09-27 二次口径（推荐多个 + 闭环落指派）**：`assign_ticket` 回到模型面并走确认闸
+（`permission=_ASK`），所以 B/C 段的工具序列里会重新出现 `assign_ticket`，且它落库前先 park 成
+interrupt 卡片等人确认。上面"序列里都没有 assign_ticket"是上一版口径（人在系统外指派）的读数。
+C 段这次**退出码 1**，但不是桥坏了：模型连三次把 `create_ticket` 的参数填错
+（漏 `category`、`priority` 填了 `"high"`、多出一个幻觉参数 `knowledge_bases`），工单簿于是空的。
+这正是 P3 记下的 qwen3 实跑毛病，也说明**这一腿本来就是偶发的**（上面那段 81 帧的历史读数一次成功过一次翻车过），
+所以失败信息现在会自带工具返回正文，免得把"模型填错参数"读成"桥把落库弄丢了"。
+顺带修了一处早就断了的地方：A5 构造 `AguiBridge` 缺 `context_config`（阈值那轮加进签名的），整个探针在此之前连 `--offline` 都起不来。
 
 ## 真机撞出来的九条接缝
 
@@ -78,6 +91,7 @@ park/唤醒是框架的原生能力，不需要我重新实现一遍。C 段再�
 托管路径的 workspace 会附送 6 个文件/命令工具（`Bash` `Edit` `Glob` `Grep` `Read` `Write`），
 `ToolSurfaceMiddleware` 把它们挡在每次模型调用的 schema 之外 —— **挂进 Toolkit ≠ 递进上下文**，
 这条在 Go 侧没有对位，是托管形态自己带出来的。业务工具 5 个：`ask_user` `assign_ticket` `create_ticket` `find_open_ticket` `match_service`。
+（这一行是当时的快照：2026-09-27 起 `assign_ticket` 已不递交给模型，见 `docs/P3_AGENT.md` 顶部那条口径裁决。）
 A1 装配出 68 条路由，A4 证明 sqlite + `InMemoryMessageBus` + `LocalWorkspaceManager` 不需要 Redis。
 
 ## 浏览器实跑（qwen3:8b temp=0）

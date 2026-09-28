@@ -40,13 +40,15 @@ LIVE_CUSTOM = json.loads(
 )
 
 
-def _bridge() -> AguiBridge:
+def _bridge(on_ready=None) -> AguiBridge:
     return AguiBridge(
         base_url="http://unused",
         user_id="u",
         system_prompt="p",
         model="m",
         max_iters=8,
+        context_config={"trigger_ratio": 0.6, "tool_result_limit": 1500},
+        on_ready=on_ready,
     )
 
 
@@ -121,10 +123,10 @@ def test_old_lowercase_discriminator_would_be_rejected(parked):
     assert body["input"]["type"] == "USER_CONFIRM_RESULT"
 
 
-def _client_with(handler):
+def _client_with(handler, **bridge_kwargs):
     import httpx
 
-    bridge = _bridge()
+    bridge = _bridge(**bridge_kwargs)
     bridge._client = httpx.AsyncClient(  # noqa: SLF001
         transport=httpx.MockTransport(handler),
         base_url="http://unused",
@@ -261,3 +263,54 @@ async def test_forwarded_run_begins_with_run_started():
     assert [f["type"] for f in out] == ["RUN_STARTED", "TEXT_MESSAGE_CONTENT", "RUN_FINISHED"]
     assert (out[0]["threadId"], out[0]["runId"]) == ("t", "r")
     await bridge._client.aclose()
+
+
+async def test_就绪回调拿到的是桥刚认下来的那两个号():
+    """AutoDream 的 cron 必须写在**这个** agent 名下，用**这份**模型配置跑。
+
+    桥是这套服务里唯一知道 `agent_id`/`credential_id` 的地方（那两个号是它回环
+    POST 出来的），所以后台任务的注册只能从这里挂出去。`on_ready` 排在两个赋值之后，
+    `bridge.agent_id` 是一个会在没 start 过时直接 assert 的口 —— 回调能读到值，
+    本身就证明了顺序。
+    """
+    import httpx
+
+    seen: dict = {}
+
+    async def on_ready(b: AguiBridge) -> None:
+        seen["agent"] = b.agent_id
+        seen["model"] = b.chat_model_config
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path, method = request.url.path, request.method
+        if (path, method) == ("/credential/", "GET"):
+            return httpx.Response(200, json={"credentials": []})
+        if (path, method) == ("/credential/", "POST"):
+            return httpx.Response(200, json={"credential_id": "cred-1"})
+        if (path, method) == ("/agent/", "GET"):
+            return httpx.Response(200, json={"agents": []})
+        return httpx.Response(200, json={"agent_id": "agent-1"})
+
+    bridge = _client_with(handler, on_ready=on_ready)
+    await bridge.start()
+    assert seen["agent"] == "agent-1"
+    # 后台整理与前台对话同一个模型、同一组参数：temp=0，关思考
+    assert seen["model"] == {
+        "type": "ollama_credential",
+        "credential_id": "cred-1",
+        "model": "m",
+        "parameters": {"temperature": 0.0, "thinking_enable": False},
+    }
+    await bridge._client.aclose()
+
+
+def test_导入业务包之后回环不再交给系统代理() -> None:
+    """真机 2026-09-27 20:13：只走 console 路径的探针收到一个空正文 502 ——
+    那两道 `NO_PROXY` 当时只写在 `service.py` 里，管不到 `agent_factory` / `knowledge`
+    自己建的模型与嵌入客户端。判据用 httpx 自己的解析结果，不重读我们设的那个字面量
+    （P5 §2 的教训）：`all://127.0.0.1` 必须**在场且为 None**，缺键也读作 None。"""
+    from httpx._utils import get_environment_proxies  # 私有：这正是 Client 内部用的那个函数
+
+    mounts = get_environment_proxies()
+    for host in ("all://127.0.0.1", "all://localhost", "all://[::1]"):
+        assert host in mounts and mounts[host] is None, f"{host} 没被 bypass：{mounts}"

@@ -1,0 +1,368 @@
+{
+  "generatedAt": "2026-09-27T14:24:03+00:00",
+  "mode": "live",
+  "embedModel": "bge-m3",
+  "chatModel": "qwen3:8b",
+  "sabotage": [],
+  "axis": "trajectory",
+  "repeats": 1,
+  "dataset": "trajectory.json",
+  "version": 3,
+  "repeat": 1,
+  "toolAliases": {
+    "rag_search": "search_knowledge",
+    "ticket_create_confirm": "create_ticket",
+    "ticket_find_open_by_topic": "find_open_ticket"
+  },
+  "runtime": {
+    "samples": 4,
+    "wallMs": {
+      "n": 4,
+      "p50": 7712.6,
+      "p95": 17297.0,
+      "mean": 10328.1,
+      "max": 17297.0
+    },
+    "modelMs": {
+      "n": 4,
+      "p50": 7694.8,
+      "p95": 17288.9,
+      "mean": 10311.6,
+      "max": 17288.9
+    },
+    "toolMs": {
+      "n": 4,
+      "p50": 59.3,
+      "p95": 145.7,
+      "mean": 83.1,
+      "max": 145.7
+    },
+    "waitMs": {
+      "n": 4,
+      "p50": 0.0,
+      "p95": 0.0,
+      "mean": 0.0,
+      "max": 0.0
+    },
+    "residualMs": {
+      "n": 4,
+      "p50": -56.4,
+      "p95": -47.7,
+      "mean": -66.6,
+      "max": -47.7
+    },
+    "rounds": {
+      "n": 4,
+      "p50": 2.0,
+      "p95": 4.0,
+      "mean": 2.8,
+      "max": 4.0
+    },
+    "inputTokens": {
+      "n": 4,
+      "p50": 3846.0,
+      "p95": 13706.0,
+      "mean": 7131.5,
+      "max": 13706.0
+    },
+    "outputTokens": {
+      "n": 4,
+      "p50": 67.0,
+      "p95": 344.0,
+      "mean": 166.8,
+      "max": 344.0
+    },
+    "perToolMs": {
+      "ask_user": {
+        "n": 3,
+        "p50": 59.3,
+        "p95": 71.8,
+        "mean": 62.3,
+        "max": 71.8
+      },
+      "assign_ticket": {
+        "n": 1,
+        "p50": 64.8,
+        "p95": 64.8,
+        "mean": 64.8,
+        "max": 64.8
+      },
+      "match_service": {
+        "n": 1,
+        "p50": 80.9,
+        "p95": 80.9,
+        "mean": 80.9,
+        "max": 80.9
+      }
+    },
+    "p95Note": "n=4 撑不起 P95（向上最近秩下它取的是第 4 名），只能看形状"
+  },
+  "rows": [
+    {
+      "caseId": "tj-001",
+      "scenario": "knowledge_answered",
+      "repeat": 0,
+      "exit": 1,
+      "sequenceScore": null,
+      "facts": {
+        "tools": [
+          "ask_user"
+        ],
+        "rounds": 2,
+        "parked": [],
+        "ticketCreated": false
+      },
+      "checks": [
+        {
+          "name": "rounds_within_budget",
+          "ok": true,
+          "fatal": false,
+          "detail": "2 轮 / 上限 2"
+        },
+        {
+          "name": "must_call",
+          "ok": false,
+          "fatal": false,
+          "detail": "没调到：['search_knowledge']"
+        },
+        {
+          "name": "confirm_gate",
+          "ok": true,
+          "fatal": true,
+          "detail": "写操作都走闸"
+        },
+        {
+          "name": "no_unhandled_errors",
+          "ok": true,
+          "fatal": false,
+          "detail": ""
+        },
+        {
+          "name": "ticket_created",
+          "ok": true,
+          "fatal": false,
+          "detail": "实际=False 期望=False"
+        }
+      ],
+      "judged": [
+        {
+          "grader": "relevance",
+          "score": 3.0,
+          "reason": "回复未直接解决401错误的具体原因，而是转而询问更多细节，未能提供针对性的排查建议或解决方案，偏离了用户寻求问题根源的核心需求。"
+        }
+      ],
+      "trace": {
+        "wallMs": 7712.6,
+        "modelMs": 7694.8,
+        "toolMs": 71.8,
+        "waitMs": 0.0,
+        "inputTokens": 3820,
+        "outputTokens": 58
+      }
+    },
+    {
+      "caseId": "tj-002",
+      "scenario": "knowledge_answered",
+      "repeat": 0,
+      "exit": 1,
+      "sequenceScore": null,
+      "facts": {
+        "tools": [
+          "ask_user"
+        ],
+        "rounds": 2,
+        "parked": [],
+        "ticketCreated": false
+      },
+      "checks": [
+        {
+          "name": "rounds_within_budget",
+          "ok": true,
+          "fatal": false,
+          "detail": "2 轮 / 上限 2"
+        },
+        {
+          "name": "must_call",
+          "ok": false,
+          "fatal": false,
+          "detail": "没调到：['search_knowledge']"
+        },
+        {
+          "name": "confirm_gate",
+          "ok": true,
+          "fatal": true,
+          "detail": "写操作都走闸"
+        },
+        {
+          "name": "no_unhandled_errors",
+          "ok": true,
+          "fatal": false,
+          "detail": ""
+        },
+        {
+          "name": "ticket_created",
+          "ok": true,
+          "fatal": false,
+          "detail": "实际=False 期望=False"
+        }
+      ],
+      "judged": [
+        {
+          "grader": "relevance",
+          "score": 2.0,
+          "reason": "回复未直接解答用户关于账号解锁流程的具体问题，而是要求提供更多背景信息，未能提供所需的操作步骤或解决方案，属于承认查询但未提供有用内容的情况"
+        }
+      ],
+      "trace": {
+        "wallMs": 3249.2,
+        "modelMs": 3246.3,
+        "toolMs": 59.3,
+        "waitMs": 0.0,
+        "inputTokens": 3846,
+        "outputTokens": 67
+      }
+    },
+    {
+      "caseId": "tj-003",
+      "scenario": "ticket_created",
+      "repeat": 0,
+      "exit": 1,
+      "sequenceScore": 0.5,
+      "facts": {
+        "tools": [
+          "ask_user",
+          "create_ticket"
+        ],
+        "rounds": 3,
+        "parked": [
+          "create_ticket"
+        ],
+        "ticketCreated": false
+      },
+      "checks": [
+        {
+          "name": "rounds_within_budget",
+          "ok": true,
+          "fatal": false,
+          "detail": "3 轮 / 上限 4"
+        },
+        {
+          "name": "tool_sequence_score",
+          "ok": false,
+          "fatal": false,
+          "detail": "score=0.5 下限=0.99"
+        },
+        {
+          "name": "confirm_gate",
+          "ok": true,
+          "fatal": true,
+          "detail": "写操作都走闸"
+        },
+        {
+          "name": "no_unhandled_errors",
+          "ok": true,
+          "fatal": false,
+          "detail": ""
+        },
+        {
+          "name": "ticket_created",
+          "ok": false,
+          "fatal": false,
+          "detail": "实际=False 期望=True（停在确认闸：['create_ticket']，还差一次用户点头）"
+        }
+      ],
+      "judged": [
+        {
+          "grader": "relevance",
+          "score": 3.0,
+          "reason": "回复未直接解决磁盘满的紧急问题，而是转向收集更多信息，缺乏具体解决方案或处理步骤，未能满足用户急需的故障排除指导"
+        }
+      ],
+      "trace": {
+        "wallMs": 17297.0,
+        "modelMs": 17288.9,
+        "toolMs": 55.8,
+        "waitMs": 0.0,
+        "inputTokens": 7154,
+        "outputTokens": 344
+      }
+    },
+    {
+      "caseId": "tj-004",
+      "scenario": "ticket_created",
+      "repeat": 0,
+      "exit": 0,
+      "sequenceScore": null,
+      "facts": {
+        "tools": [
+          "create_ticket",
+          "match_service",
+          "assign_ticket"
+        ],
+        "rounds": 4,
+        "parked": [
+          "create_ticket"
+        ],
+        "ticketCreated": true
+      },
+      "checks": [
+        {
+          "name": "rounds_within_budget",
+          "ok": true,
+          "fatal": false,
+          "detail": "4 轮 / 上限 4"
+        },
+        {
+          "name": "must_call",
+          "ok": true,
+          "fatal": false,
+          "detail": "create_ticket"
+        },
+        {
+          "name": "confirm_gate",
+          "ok": true,
+          "fatal": true,
+          "detail": "写操作都走闸"
+        },
+        {
+          "name": "no_unhandled_errors",
+          "ok": true,
+          "fatal": false,
+          "detail": ""
+        },
+        {
+          "name": "ticket_created",
+          "ok": true,
+          "fatal": false,
+          "detail": "实际=True 期望=True"
+        }
+      ],
+      "judged": [
+        {
+          "grader": "relevance",
+          "score": 1.0,
+          "reason": "回复完全偏离用户需求，用户明确要求创建工单但回答却询问是否需要上门服务，既未解决系统卡顿问题，也未提供工单创建指导，属于完全不相关回答"
+        }
+      ],
+      "trace": {
+        "wallMs": 13053.7,
+        "modelMs": 13016.3,
+        "toolMs": 145.7,
+        "waitMs": 0.0,
+        "inputTokens": 13706,
+        "outputTokens": 198
+      }
+    }
+  ],
+  "totals": {
+    "runs": 4,
+    "passed": 1,
+    "softFail": 3,
+    "fatalFail": 0
+  },
+  "judge": {
+    "judgeModel": "qwen3:8b",
+    "judgeBase": "http://127.0.0.1:11434/v1",
+    "judgeLanguage": "zh"
+  }
+}

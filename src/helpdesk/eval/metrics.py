@@ -1,7 +1,10 @@
 """四轴指标的纯函数层 —— 框架给仪表（事件流 + 结构化输出），量表在这里自研。
 
-安装包 2.0.8 内确认无 agentscope.evaluation；唯一自带通过/失败语义的
-GoalPipeline 是 LLM judge，按项目红线只能进「答案质量」轴，而那一轴需先有人工 κ。
+安装包 2.0.8 内确认无 `agentscope.evaluate`（1.x 文档里那套 Task/Metric/Evaluator 已随
+版本移除）；框架自带 pass/fail 语义的只有 `GoalPipeline`，而它的 verifier 是模型判的。
+所以判分分两处：红线用代码（`gates.py`，能机器断言的一律断言），无金标可断言的质量维度
+用 py-openjudge 的 grader（`judge.py`）。两边都在报告里留痕：红线看退出码，评委看
+`judgeModel` —— 评委默认与被评者同模型，自偏好这件事不藏。
 """
 from __future__ import annotations
 

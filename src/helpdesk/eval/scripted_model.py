@@ -20,6 +20,7 @@ from pydantic import BaseModel
 from agentscope.credential import OllamaCredential
 from agentscope.message import TextBlock, ToolCallBlock
 from agentscope.model import ChatModelBase, ChatResponse, ChatUsage
+from agentscope.model._model_response import StructuredResponse
 from agentscope.tool import ToolChoice
 
 
@@ -60,7 +61,7 @@ class ScriptedChatModel(ChatModelBase):
     """A ChatModelBase that replays a fixed list of Turn objects.
 
     Records every request it receives so a probe/eval can assert on what the
-    framework actually sent (tool schemas, tool_choice, message count).
+    framework actually sent (tool schemas, tool_choice, message count, prompt texts).
     """
 
     class Parameters(BaseModel):
@@ -88,6 +89,23 @@ class ScriptedChatModel(ChatModelBase):
     def n_calls(self) -> int:
         return len(self.requests)
 
+    async def generate_structured_output(
+        self,
+        messages: list[Any],
+        structured_model: Any,
+        **kwargs: Any,
+    ) -> StructuredResponse:
+        """脚本模型不做真分类，回一个固定结果，不消耗 turn。
+
+        IntentRouter 的分类在离线/测试路径上会走到这里：真分类要调 ollama，而脚本
+        模型没有那一步；让它照常走 `_call_api` 会白烧一个 turn，把脚本挤爆
+        （`ScriptExhausted`）。默认判 incident 是"不丢单"的 fail-open 方向 ——
+        工具面不裁剪，脚本照金标演，不受分类影响。
+        """
+        return StructuredResponse(
+            content={"intent": "incident", "confidence": 0.9},
+        )
+
     async def _call_api(
         self,
         model_name: str,
@@ -108,6 +126,7 @@ class ScriptedChatModel(ChatModelBase):
         self.requests.append(
             {
                 "n_messages": len(messages),
+                "texts": [m.get_text_content() for m in messages],
                 "tools": [t.get("function", {}).get("name") for t in (tools or [])],
                 "tool_choice": repr(tool_choice),
                 "dropped_tool_calls": turn.n_calls - len(calls),

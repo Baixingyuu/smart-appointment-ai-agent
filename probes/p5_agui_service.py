@@ -55,10 +55,10 @@ from agentscope.workspace import LocalWorkspace  # noqa: E402
 from pydantic import ValidationError  # noqa: E402
 
 from helpdesk.agui_bridge import AguiBridge, _interrupts, _Thread, confirmable_tool_call  # noqa: E402
-from helpdesk.catalog import ROSTER  # noqa: E402
 from helpdesk.knowledge import open_index  # noqa: E402
 from helpdesk.runtime.agent_factory import (  # noqa: E402
     CHAT_MODEL,
+    CONTEXT_CONFIG,
     MAX_ITERS,
     SYSTEM_PROMPT,
 )
@@ -151,6 +151,7 @@ async def phase_a(index) -> tuple[list[str], dict]:
         system_prompt="p",
         model="m",
         max_iters=8,
+        context_config=CONTEXT_CONFIG,
     )
     thread = _Thread("s", "a", asyncio.Queue(), asyncio.create_task(asyncio.sleep(0)))
     bridge._park(  # noqa: SLF001
@@ -286,7 +287,7 @@ async def phase_b(index) -> tuple[list[str], dict]:
                     "name": "helpdesk",
                     "system_prompt": SYSTEM_PROMPT,
                     "react_config": {"max_iters": MAX_ITERS},
-                    "context_config": {"trigger_ratio": 0.8, "tool_result_limit": 1500},
+                    "context_config": CONTEXT_CONFIG,
                 },
             )
             r.raise_for_status()
@@ -428,9 +429,9 @@ async def phase_b(index) -> tuple[list[str], dict]:
             await _wait_for(
                 events,
                 lambda e: e.get("type") == "TOOL_CALL_START"
-                and (e.get("toolCallName") or e.get("tool_call_name")) == "assign_ticket",
+                and (e.get("toolCallName") or e.get("tool_call_name")) == "match_service",
                 DEADLINE * 0.45,
-                "assign_ticket 的 TOOL_CALL_START",
+                "match_service 的 TOOL_CALL_START",
             )
 
             contexts = app.state.helpdesk_contexts
@@ -441,16 +442,16 @@ async def phase_b(index) -> tuple[list[str], dict]:
                 fails.append("B5 这个 session 的工单簿是空的（contexts 没接到 session_id）")
             else:
                 ticket = next(iter(store.tickets.values()))
-                log = next(iter(store.assignments), None)
-                print(
-                    f"  ✓ B5 落库 #{ticket.id} 指派={ticket.assignee_id} "
-                    f"in_recall={getattr(log, 'in_recall', None)} 引用={getattr(log, 'cited_tickets', None)}",
-                )
-                if ticket.assignee_id not in {e.id for e in ROSTER}:
-                    fails.append(f"B5 指派对象不在名册里：{ticket.assignee_id}")
+                # 口径：助手只推荐，负责人由人在系统外落。这里反过来断言"没人被指派"。
+                if ticket.assignee_id is not None:
+                    fails.append(f"B5 助手自己把工单派出去了：assignee={ticket.assignee_id}")
+                else:
+                    print(f"  ✓ B5 落库 #{ticket.id}，未指派（指派由人在系统外做）")
 
             called = _tool_names(events)
-            for required in ("match_service", "assign_ticket"):
+            if "assign_ticket" in called:
+                fails.append("B6 模型调到了不该调的 assign_ticket（模型面已摘 + DENY 封死）")
+            for required in ("match_service",):
                 if required not in called:
                     fails.append(f"B6 工具 {required} 没被调用")
             print(f"  · B6 真机工具调用序列：{called}")
@@ -617,18 +618,30 @@ async def phase_c(index) -> tuple[list[str], dict]:
 
             called = _tool_names(frames)
             obs["tool_calls"] = called
-            for required in ("create_ticket", "assign_ticket"):
+            if "assign_ticket" in called:
+                fails.append(f"C3 桥这条路模型调到了 assign_ticket：{called}")
+            for required in ("create_ticket", "match_service"):
                 if required not in called:
                     fails.append(f"C3 工具 {required} 没被调用：{called}")
             tickets = [t for ctx in app.state.helpdesk_contexts.values() for t in ctx.store.tickets.values()]
             obs["tickets"] = tickets
             if not tickets:
-                fails.append("C3 工单簿是空的：桥这条路没落成单")
+                # 空工单簿有两种成因：桥把落库弄丢了，或模型自己没把参数填对（实跑遇到过
+                # 漏 category、priority 填 "high"、幻觉出 knowledge_bases）。不带正文就分不开。
+                errs = [
+                    (f.get("content") or "").replace("\n", " ")[:110]
+                    for f in frames
+                    if f.get("type") == "TOOL_CALL_RESULT"
+                    and ("validation failed" in (f.get("content") or "") or "unexpected keyword" in (f.get("content") or ""))
+                ]
+                fails.append("C3 工单簿是空的：桥这条路没落成单" + (f"；工具返回正文：{errs}" if errs else ""))
             else:
                 t = tickets[0]
+                if t.assignee_id is not None:
+                    fails.append(f"C3 助手自己把工单派出去了：assignee={t.assignee_id}")
                 print(
                     f"  ✓ C3 落库 #{t.id} {t.category.value}/{t.priority.value} "
-                    f"指派={t.assignee_id} 缺={t.missing_info or '无'}",
+                    f"未指派（由人落） 缺={t.missing_info or '无'}",
                 )
             print(f"  · C 段工具序列：{called}")
     except AssertionError as exc:

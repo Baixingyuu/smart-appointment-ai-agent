@@ -19,6 +19,14 @@ type Args = {
   missing_info?: string[];
 };
 
+type SuggestArgs = {
+  ticket_id?: number;
+  candidate_ids?: string[];
+  time_slots?: string[];
+  need?: string;
+  duration_minutes?: number;
+};
+
 function parseArgs(raw: unknown): Args {
   if (typeof raw !== "string") return (raw ?? {}) as Args;
   try {
@@ -105,10 +113,102 @@ function ConfirmCard() {
   return null;
 }
 
+/**
+ * 推荐卡片：LLM 用 suggest_assignment 把候选工程师 + 可选时段弹出来，
+ * 用户点选工程师（可选时段）后，resolve 把选择放进 AG-UI 的 payload 回传。
+ */
+function SuggestCard() {
+  const [busy, setBusy] = useState(false);
+  const [engineerId, setEngineerId] = useState<string | null>(null);
+  const [timeSlot, setTimeSlot] = useState<string | null>(null);
+
+  useInterrupt({
+    agentId: AGENT_ID,
+    enabled: ({ value }) =>
+      ((value as { metadata?: { toolName?: string } } | undefined)?.metadata?.toolName) ===
+      "suggest_assignment",
+    render: ({ interrupt, resolve, cancel }) => {
+      const meta = (interrupt?.metadata ?? {}) as { toolName?: string; args?: string };
+      const args = parseArgs(meta.args) as SuggestArgs;
+      const candidateIds = args.candidate_ids ?? [];
+      const timeSlots = args.time_slots ?? [];
+      const submit = async () => {
+        if (!engineerId) return;
+        setBusy(true);
+        try {
+          await resolve({ engineer_id: engineerId, time_slot: timeSlot }, interrupt?.id as string);
+          setEngineerId(null);
+          setTimeSlot(null);
+        } finally {
+          setBusy(false);
+        }
+      };
+      return (
+        <div className="card">
+          <h3>推荐工程师，请选择一位</h3>
+          <div className="options">
+            {candidateIds.map((id) => (
+              <button
+                key={id}
+                type="button"
+                disabled={busy}
+                className={engineerId === id ? "option selected" : "option"}
+                onClick={() => setEngineerId(id)}
+              >
+                <span className="opt-name">员工 {id}</span>
+              </button>
+            ))}
+          </div>
+          {timeSlots.length > 0 && (
+            <>
+              <h4 className="opt-group">可选上门时段（可跳过）</h4>
+              <div className="options">
+                {timeSlots.map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    disabled={busy}
+                    className={timeSlot === t ? "option selected" : "option"}
+                    onClick={() => setTimeSlot(t)}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+          <div className="row">
+            <button className="primary" disabled={busy || !engineerId} onClick={submit} type="button">
+              确定指派{timeSlot ? `（${timeSlot}）` : ""}
+            </button>
+            <button
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true);
+                try {
+                  await cancel(interrupt?.id as string);
+                } finally {
+                  setBusy(false);
+                }
+              }}
+              type="button"
+            >
+              取消
+            </button>
+          </div>
+        </div>
+      );
+    },
+  });
+
+  return null;
+}
+
 export default function Page() {
   return (
     <CopilotKit runtimeUrl="/api/copilotkit">
       <ConfirmCard />
+      <SuggestCard />
       <main>
         <h1>IT 服务台受理</h1>
         <p className="hint">

@@ -57,6 +57,10 @@ _SLOT_LABELS = {
     "requested_action": "您希望我们执行什么操作",
     "target_service": "这次变更针对哪个服务",
     "planned_window": "计划的变更时间窗口",
+    # 追问走 ask_user，而 ask_user 念的就是这张表 —— 少一条就会把内部字段名说给用户听。
+    "visit_time": "希望哪天几点前后上门",
+    "visit_duration": "预计需要多长时间（30/60/120 分钟）",
+    "service_preference": "有没有指定的工程师或服务偏好",
 }
 
 

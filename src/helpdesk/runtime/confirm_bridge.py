@@ -5,11 +5,12 @@
 是钉钉**卡片按钮回调**用的，不是聊天里的一句话。用户在会话里回
 「嗯嗢先这样吧」「别问了直接建单」「我还想提个别的问题」没人翻 ——
 而 P0 探针③实测：park 期间塞裸 UserMsg 是 `ValueError`，不是被静默丢掉。
-所以桥必须存在，且它的两条硬约束是设计出来的：
+所以桥必须存在，且它的三条硬约束是设计出来的：
 
 1. 每条线必须有归宿（approve / reject / restart），没有"丢掉"这个分支 —— Go 的 D2。
-2. 判同意只认**整句归一化后等于**某个确认词，或句中出现明确的推进短语；
-   不对"确认"二字做子串匹配 —— Go 的 D3（"先不建，等我确认下再说"曾被当成同意）。
+2. 判同意有三档，全是**显式**词表：整句归一化后等于确认词；句中出现推进短语且比否决
+   短语先出现；句中有确认词且没有任何推迟/自述核实的说法。不对"确认"二字做无条件
+   子串匹配 —— Go 的 D3（"先不建，等我确认下再说"曾被当成同意）。
 3. 决策用的 tool_call 一律从 `state` 里读，不信任何回传值 —— agent 层不幂等。
 """
 from __future__ import annotations
@@ -50,6 +51,15 @@ _REJECT_EXACT = frozenset(
 # 句子更长时看线索：谁先出现谁定调，都判不出来就当新诉求。
 _APPROVE_CUES = ("直接建单", "现在就建", "马上建", "尽快建", "确认建单", "先这样吧", "别问了")
 _REJECT_CUES = ("先不建", "不要建", "别建", "不建", "先不用", "取消", "算了", "等等再说", "不同意", "拒绝")
+#: 第三档：句子里点了头（而不只是整句等于一个确认词）。`normalize` 把标点全删了，
+#: 所以"好的，确认，麻烦尽快"归一化成"好的确认麻烦尽快"，落在整句表和下述线索之外 ——
+#: 轨迹金标里五条这样的批准原句被判成 new_request，park 直接拆掉、草案丢了。
+#: 判不出来仍然 fail-closed，这一档只在"有确认词且没有任何推迟/自述核实的说法"时点头。
+_CONFIRM_WORDS = ("确认", "确定", "同意", "批准", "没问题", "可以")
+_DEFERRAL_WORDS = (
+    "再说", "再说吧", "等等", "稍等", "等我", "我先", "先等", "看看再说",
+    "先不", "先别", "还要", "还得", "不确定", "没确认",
+)
 
 
 def _earliest(text: str, cues: tuple[str, ...]) -> int:
@@ -72,6 +82,8 @@ def classify(text: str) -> Decision:
         return APPROVE
     if reject_at >= 0:
         return REJECT
+    if any(w in normalized for w in _CONFIRM_WORDS) and not any(w in normalized for w in _DEFERRAL_WORDS):
+        return APPROVE
     return NEW_REQUEST
 
 

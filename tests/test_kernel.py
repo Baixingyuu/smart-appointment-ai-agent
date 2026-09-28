@@ -38,7 +38,7 @@ from helpdesk.domain import (  # noqa: E402
     slot_label,
 )
 from helpdesk.runtime.textmatch import char_coverage, is_substring, matches, normalize  # noqa: E402
-from helpdesk.ticket_store import TicketStore  # noqa: E402
+from helpdesk.ticket_store import TicketStore, UnknownTicket  # noqa: E402
 
 
 def make(store: TicketStore, title="下单接口 500", description="线上下单接口持续返回 500，订单无法创建。"):
@@ -86,6 +86,15 @@ def test_escalate_leaves_ticket_unassigned_but_logged() -> None:
     assert log.escalated and log.outcome == "escalated" and log.assignee_id is None
     kinds = [p.kind for p in store.progress_of(ticket.id)]
     assert kinds == [ProgressKind.CREATED, ProgressKind.ASSIGNED]
+
+
+def test_comment_on_unknown_ticket_is_refused() -> None:
+    """预约侧的回访评论带着模型写的 ticket_id 进来，孤儿进展必须当场炸出来。"""
+    store = TicketStore()
+    ticket = make(store).ticket
+    with pytest.raises(UnknownTicket):
+        store.comment(99, "上门回访：换了令牌")
+    assert [p.ticket_id for p in store.progress] == [ticket.id]
 
 
 # --- 去重 -------------------------------------------------------------------

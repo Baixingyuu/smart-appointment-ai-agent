@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from .dispatch import AssignmentDecision, DispatchEvidence, ServiceHit
@@ -59,6 +60,9 @@ class TicketStore:
     tickets: dict[int, Ticket] = field(default_factory=dict)
     progress: list[Progress] = field(default_factory=list)
     assignments: list[AssignmentLog] = field(default_factory=list)
+    #: 写穿：进展每加一行就镜像一份到按用户的持久事实源（`ledger.Ledger`）。
+    #: 工单簿按会话现造，会话结束就没了；AutoDream 要跨会话看，不能读它。
+    sink: Callable[[Progress, Ticket], None] | None = None
     _next_ticket: int = 1
     _next_progress: int = 1
     _next_seq: int = 1
@@ -158,6 +162,9 @@ class TicketStore:
         return ticket
 
     def comment(self, ticket_id: int, text: str, author_id: int | None = None) -> Progress:
+        # 与 assign/accept/resolve 同一道闸：预约侧的回访评论带着模型写的 ticket_id 进来，
+        # 少了这道闸就会留下指向不存在工单的孤儿进展，而且没人会察觉。
+        self.get(ticket_id)
         return self._add_progress(ticket_id, ProgressKind.COMMENT, text, author_id)
 
     def progress_of(self, ticket_id: int) -> list[Progress]:
@@ -179,4 +186,6 @@ class TicketStore:
         )
         self.progress.append(item)
         self._next_progress += 1
+        if self.sink is not None:
+            self.sink(item, self.tickets[ticket_id])
         return item

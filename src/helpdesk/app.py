@@ -53,9 +53,18 @@ async def chat(agent: object, store: TicketStore, renderer: ConsoleRenderer) -> 
 def _summary(store: TicketStore) -> str:
     if not store.tickets:
         return "本次会话没有落成工单。"
+    # assignee_id 为 None 有两种完全不同的意思：人是显式转了人工，还是用户还没选定/确认。
+    # 推荐候选到用户选定之间，工单是"已建未指派"的常态，所以要看指派账，不能只看工单。
+    last_assignment = {a.ticket_id: a for a in store.assignments}
     lines = [f"工单 {len(store.tickets)} 张："]
     for t in store.tickets.values():
-        who = "转人工待认领" if t.assignee_id is None else f"员工 {t.assignee_id}"
+        assignment = last_assignment.get(t.id)
+        if t.assignee_id is not None:
+            who = f"员工 {t.assignee_id}"
+        elif assignment is not None and assignment.escalated:
+            who = "转人工待认领"
+        else:
+            who = "未指派（由人落）"
         missing = f"，缺 {'、'.join(t.missing_info)}" if t.missing_info else ""
         lines.append(f"  #{t.id} {t.title}｜{t.category.value}/{t.priority.value}｜{t.status.value}｜{who}{missing}")
     return "\n".join(lines)
