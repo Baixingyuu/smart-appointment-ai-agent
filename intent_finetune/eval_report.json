@@ -1,0 +1,112 @@
+{
+  "n": 180,
+  "zero_shot": {
+    "accuracy": 0.7833,
+    "n": 180,
+    "perLabel": {
+      "chitchat": {
+        "precision": 0.5357,
+        "recall": 1.0,
+        "gold": 30,
+        "pred": 56,
+        "correct": 30
+      },
+      "knowledge": {
+        "precision": 0.9245,
+        "recall": 0.8909,
+        "gold": 55,
+        "pred": 53,
+        "correct": 49
+      },
+      "incident": {
+        "precision": 0.8302,
+        "recall": 0.9778,
+        "gold": 45,
+        "pred": 53,
+        "correct": 44
+      },
+      "handoff": {
+        "precision": 1.0,
+        "recall": 0.72,
+        "gold": 25,
+        "pred": 18,
+        "correct": 18
+      },
+      "out_of_scope": {
+        "precision": null,
+        "recall": 0.0,
+        "gold": 25,
+        "pred": 0,
+        "correct": 0
+      }
+    },
+    "confusion": {
+      "knowledge->incident": 6,
+      "handoff->chitchat": 5,
+      "out_of_scope->knowledge": 4,
+      "out_of_scope->incident": 1,
+      "out_of_scope->chitchat": 20,
+      "handoff->incident": 2,
+      "incident->chitchat": 1
+    }
+  },
+  "lora": {
+    "accuracy": 0.9167,
+    "n": 180,
+    "perLabel": {
+      "chitchat": {
+        "precision": 0.963,
+        "recall": 0.8667,
+        "gold": 30,
+        "pred": 27,
+        "correct": 26
+      },
+      "knowledge": {
+        "precision": 1.0,
+        "recall": 0.8364,
+        "gold": 55,
+        "pred": 46,
+        "correct": 46
+      },
+      "incident": {
+        "precision": 0.8627,
+        "recall": 0.9778,
+        "gold": 45,
+        "pred": 51,
+        "correct": 44
+      },
+      "handoff": {
+        "precision": 0.9259,
+        "recall": 1.0,
+        "gold": 25,
+        "pred": 27,
+        "correct": 25
+      },
+      "out_of_scope": {
+        "precision": 0.8276,
+        "recall": 0.96,
+        "gold": 25,
+        "pred": 29,
+        "correct": 24
+      }
+    },
+    "confusion": {
+      "knowledge->incident": 6,
+      "chitchat->out_of_scope": 3,
+      "chitchat->incident": 1,
+      "knowledge->handoff": 1,
+      "incident->handoff": 1,
+      "knowledge->out_of_scope": 2,
+      "out_of_scope->chitchat": 1
+    }
+  },
+  "checks": [
+    {
+      "name": "incident_recall",
+      "ok": true,
+      "fatal": false,
+      "detail": "incident 召回 97.8%，低于 90% 会漏建单"
+    }
+  ],
+  "adapter": "/Users/mac/dev_projects/helpdesk-agentscope/intent_finetune/lora_out/adapter"
+}

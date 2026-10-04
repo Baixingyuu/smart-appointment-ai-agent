@@ -1,0 +1,52 @@
+{
+  "n": 180,
+  "protocol": "4类（chitchat 并入 out_of_scope）",
+  "base": "qwen3-1.7b",
+  "adapter": "lora_out_17b/adapter",
+  "lora": {
+    "accuracy": 0.9722,
+    "n": 180,
+    "perLabel": {
+      "knowledge": {
+        "precision": 1.0,
+        "recall": 0.9091,
+        "gold": 55,
+        "pred": 50,
+        "correct": 50
+      },
+      "incident": {
+        "precision": 0.9375,
+        "recall": 1.0,
+        "gold": 45,
+        "pred": 48,
+        "correct": 45
+      },
+      "handoff": {
+        "precision": 0.9259,
+        "recall": 1.0,
+        "gold": 25,
+        "pred": 27,
+        "correct": 25
+      },
+      "out_of_scope": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "gold": 55,
+        "pred": 55,
+        "correct": 55
+      }
+    },
+    "confusion": {
+      "knowledge->incident": 3,
+      "knowledge->handoff": 2
+    }
+  },
+  "checks": [
+    {
+      "name": "incident_recall",
+      "ok": true,
+      "fatal": false,
+      "detail": "incident 召回 100.0%，低于 90% 会漏建单"
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "model": "qwen3-0.6b-intent (GGUF f16 导入 Ollama, think=false, temp=0, max_new=32)",
+  "where": "0.6B 微调模型 (Ollama HTTP 进程间)，前缀缓存生效",
+  "prompt_tokens_avg": 212.0,
+  "output_tokens_avg": 16.6,
+  "latency_ms": {
+    "mean": 125.8,
+    "p50": 123.3,
+    "p95": 159.8,
+    "min": 104.6,
+    "max": 424.4
+  },
+  "n": 200,
+  "samples": [
+    {
+      "ms": 114.28295797668397,
+      "prompt_tokens": 211,
+      "output_tokens": 16,
+      "response": "{\"intent\": \"incident\", \"confidence\": 0.92}"
+    },
+    {
+      "ms": 104.57837500143796,
+      "prompt_tokens": 211,
+      "output_tokens": 15,
+      "response": "{\"intent\": \"incident\", \"confidence\": 0.9}"
+    },
+    {
+      "ms": 118.47995896823704,
+      "prompt_tokens": 211,
+      "output_tokens": 17,
+      "response": "{\"intent\": \"handoff\", \"confidence\": 0.99}"
+    }
+  ]
+}

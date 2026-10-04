@@ -1,0 +1,3 @@
+FROM ./qwen3-0.6b-intent-f16.gguf
+PARAMETER temperature 0
+PARAMETER num_predict 32

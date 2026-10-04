@@ -1,0 +1,34 @@
+{
+  "model": "qwen3:8b (Ollama, GGUF Q4 量化, think=false, temp=0, max_new=32)",
+  "where": "8B (Ollama HTTP 进程间)，无前缀缓存(nonce)",
+  "prompt_tokens_avg": 454.0,
+  "output_tokens_avg": 19.8,
+  "latency_ms": {
+    "mean": 1424.6,
+    "p50": 1440.2,
+    "p95": 1500.0,
+    "min": 1283.9,
+    "max": 1576.8
+  },
+  "n": 150,
+  "samples": [
+    {
+      "ms": 1435.8415000606328,
+      "prompt_tokens": 453,
+      "output_tokens": 20,
+      "response": "{\n  \"intent\": \"knowledge\",\n  \"confidence\": 0.95\n}"
+    },
+    {
+      "ms": 1359.1713339556009,
+      "prompt_tokens": 453,
+      "output_tokens": 20,
+      "response": "{\n  \"intent\": \"knowledge\",\n  \"confidence\": 0.95\n}"
+    },
+    {
+      "ms": 1446.4833750389516,
+      "prompt_tokens": 453,
+      "output_tokens": 20,
+      "response": "{\n  \"intent\": \"handoff\",\n  \"confidence\": 1.0\n}"
+    }
+  ]
+}

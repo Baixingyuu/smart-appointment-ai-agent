@@ -1,0 +1,21 @@
+# 大文件不入库（可重新下载/重新训练得到）
+# 注意：gitignore 的 # 只在行首才是注释，行尾注释会被当成模式的一部分。
+
+# 388M 原始公开语料，见 fetch_raw.sh
+raw/
+
+# 底座权重（1.4G / 3.8G）
+qwen3-0.6b/
+qwen3-1.7b/
+
+# LoRA 产物（adapter + 合并后的权重）
+lora_out/
+lora_out_06b_4cls/
+lora_out_17b/
+
+# HF→GGUF 转换用的 llama.cpp 克隆
+llama.cpp/
+
+*.gguf
+__pycache__/
+*.log

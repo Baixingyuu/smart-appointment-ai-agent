@@ -1,0 +1,15 @@
+{
+  "where": "0.6B LoRA (本地 MPS, 进程内)",
+  "prompt_tokens_avg": 217.0,
+  "output_tokens_avg": 16.5,
+  "latency_ms": {
+    "mean": 485.8,
+    "p50": 480.4,
+    "p95": 592.7,
+    "min": 397.5,
+    "max": 663.7
+  },
+  "n": 30,
+  "prompt_variant": "short",
+  "model": "Qwen3-0.6B + LoRA(r16), fp16, merged, MPS, batch=1, greedy, max_new=32"
+}
